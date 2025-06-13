@@ -9,22 +9,22 @@ const PreviewContainer = styled.div`
 `;
 
 interface PreviewProps {
-    html: string;
-    css: string;
-    js: string;
+  html: string;
+  css: string;
+  js: string;
 }
 
 const Preview: React.FC<PreviewProps> = ({ html, css, js }) => {
-    const iframeRef = useRef<HTMLIFrameElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-    useEffect(() => {
-        const iframe = iframeRef.current;
-        if (!iframe) return;
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
 
-        const doc = iframe.contentDocument;
-        if (!doc) return;
+    const doc = iframe.contentDocument;
+    if (!doc) return;
 
-        const content = `
+    const content = `
       <!DOCTYPE html>
       <html>
         <head>
@@ -37,20 +37,20 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js }) => {
       </html>
     `;
 
-        doc.open();
-        doc.write(content);
-        doc.close();
-    }, [html, css, js]);
+    doc.open();
+    doc.write(content);
+    doc.close();
+  }, [html, css, js]);
 
-    return (
-        <PreviewContainer>
-            <iframe
-                ref={iframeRef}
-                title="preview"
-                style={{ width: '100%', height: '100%', border: 'none' }}
-            />
-        </PreviewContainer>
-    );
+  return (
+    <PreviewContainer>
+      <iframe
+        ref={iframeRef}
+        title="preview"
+        style={{ width: '100%', height: '100%', border: 'none' }}
+      />
+    </PreviewContainer>
+  );
 };
 
 export default Preview; 

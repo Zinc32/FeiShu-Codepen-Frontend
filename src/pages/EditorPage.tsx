@@ -71,58 +71,58 @@ const PreviewSection = styled.div`
 `;
 
 const EditorPage: React.FC = () => {
-    const [html, setHtml] = useState('<div>Hello World!</div>');
-    const [css, setCss] = useState('div { color: blue; }');
-    const [js, setJs] = useState('console.log("Hello from JavaScript!");');
+  const [html, setHtml] = useState('<div>Hello World!</div>');
+  const [css, setCss] = useState('div { color: blue; }');
+  const [js, setJs] = useState('console.log("Hello from JavaScript!");');
 
-    return (
-        <Container>
-            <EditorsContainer>
-                <EditorSection>
-                    <EditorHeader>
-                        <EditorTitle>HTML</EditorTitle>
-                    </EditorHeader>
-                    <EditorContent>
-                        <Editor
-                            value={html}
-                            language="html"
-                            onChange={setHtml}
-                        />
-                    </EditorContent>
-                </EditorSection>
+  return (
+    <Container>
+      <EditorsContainer>
+        <EditorSection>
+          <EditorHeader>
+            <EditorTitle>HTML</EditorTitle>
+          </EditorHeader>
+          <EditorContent>
+            <Editor
+              value={html}
+              language="html"
+              onChange={setHtml}
+            />
+          </EditorContent>
+        </EditorSection>
 
-                <EditorSection>
-                    <EditorHeader>
-                        <EditorTitle>CSS</EditorTitle>
-                    </EditorHeader>
-                    <EditorContent>
-                        <Editor
-                            value={css}
-                            language="css"
-                            onChange={setCss}
-                        />
-                    </EditorContent>
-                </EditorSection>
+        <EditorSection>
+          <EditorHeader>
+            <EditorTitle>CSS</EditorTitle>
+          </EditorHeader>
+          <EditorContent>
+            <Editor
+              value={css}
+              language="css"
+              onChange={setCss}
+            />
+          </EditorContent>
+        </EditorSection>
 
-                <EditorSection>
-                    <EditorHeader>
-                        <EditorTitle>JavaScript</EditorTitle>
-                    </EditorHeader>
-                    <EditorContent>
-                        <Editor
-                            value={js}
-                            language="javascript"
-                            onChange={setJs}
-                        />
-                    </EditorContent>
-                </EditorSection>
-            </EditorsContainer>
+        <EditorSection>
+          <EditorHeader>
+            <EditorTitle>JavaScript</EditorTitle>
+          </EditorHeader>
+          <EditorContent>
+            <Editor
+              value={js}
+              language="javascript"
+              onChange={setJs}
+            />
+          </EditorContent>
+        </EditorSection>
+      </EditorsContainer>
 
-            <PreviewSection>
-                <Preview html={html} css={css} js={js} />
-            </PreviewSection>
-        </Container>
-    );
+      <PreviewSection>
+        <Preview html={html} css={css} js={js} />
+      </PreviewSection>
+    </Container>
+  );
 };
 
 export default EditorPage; 
