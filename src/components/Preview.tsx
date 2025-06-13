@@ -24,22 +24,33 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js }) => {
     const doc = iframe.contentDocument;
     if (!doc) return;
 
-    const content = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <style>${css}</style>
-        </head>
-        <body>
-          ${html}
-          <script>${js}</script>
-        </body>
-      </html>
-    `;
+    try {
+      const content = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="UTF-8">
+            <style>${css}</style>
+          </head>
+          <body>
+            ${html}
+            <script>
+              try {
+                ${js}
+              } catch (error) {
+                console.error('Preview script error:', error);
+              }
+            </script>
+          </body>
+        </html>
+      `;
 
-    doc.open();
-    doc.write(content);
-    doc.close();
+      doc.open();
+      doc.write(content);
+      doc.close();
+    } catch (error) {
+      console.error('Preview rendering error:', error);
+    }
   }, [html, css, js]);
 
   return (
@@ -47,6 +58,7 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js }) => {
       <iframe
         ref={iframeRef}
         title="preview"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
         style={{ width: '100%', height: '100%', border: 'none' }}
       />
     </PreviewContainer>
