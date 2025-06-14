@@ -11,6 +11,8 @@ import styled from '@emotion/styled';
 import { createPen, updatePen, getUserPens, getPen, deletePen, Pen, PenData } from '../services/penService';
 import Preview from './Preview'; // Import the Preview component
 import UserNavbar from './UserNavbar';
+import * as sass from 'sass';
+import * as less from 'less';
 
 const PageContainer = styled.div`
     display: flex;
@@ -451,6 +453,42 @@ const DeleteButton = styled.button`
     }
 `;
 
+const LanguageSelect = styled.select`
+    padding: 8px 12px;
+    background: linear-gradient(135deg, #495057 0%, #343a40 100%);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 14px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    min-width: 120px;
+    max-width: 120px;
+    height: 36px;
+    
+    &:hover {
+        background: linear-gradient(135deg, #5a6268 0%, #495057 100%);
+        border-color: rgba(255, 255, 255, 0.3);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+    
+    &:focus {
+        outline: none;
+        border-color: #0366d6;
+        box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.1);
+    }
+    
+    option {
+        background-color: #343a40;
+        color: white;
+        padding: 8px;
+    }
+`;
+
 const Editor: React.FC = () => {
     const navigate = useNavigate();
     const params = useParams();
@@ -468,6 +506,8 @@ const Editor: React.FC = () => {
     const [htmlCode, setHtmlCode] = useState('<div>Hello World</div>'); // Initialize with default HTML
     const [cssCode, setCssCode] = useState('body { color: blue; }'); // Initialize with default CSS
     const [jsCode, setJsCode] = useState('console.log("Hello World");'); // Initialize with default JS
+    const [cssLanguage, setCssLanguage] = useState<'css' | 'scss' | 'less'>('css');
+    const [compiledCss, setCompiledCss] = useState('');
 
     const fetchUserPens = useCallback(async () => {
         try {
@@ -691,6 +731,32 @@ const Editor: React.FC = () => {
         }
     }, [htmlCode, cssCode, jsCode, htmlEditor, cssEditor, jsEditor, isUpdatingFromState]);
 
+    // 编译 CSS 预处理器代码
+    const compileCss = useCallback(async (code: string, language: 'scss' | 'less') => {
+        try {
+            if (language === 'scss') {
+                const result = sass.compileString(code);
+                return result.css;
+            } else if (language === 'less') {
+                const result = await less.render(code);
+                return result.css;
+            }
+            return code;
+        } catch (error) {
+            console.error(`Error compiling ${language}:`, error);
+            return code;
+        }
+    }, []);
+
+    // 当 CSS 代码或语言改变时重新编译
+    useEffect(() => {
+        if (cssLanguage !== 'css') {
+            compileCss(cssCode, cssLanguage).then(setCompiledCss);
+        } else {
+            setCompiledCss(cssCode);
+        }
+    }, [cssCode, cssLanguage, compileCss]);
+
     const handleSave = async () => {
         if (isSaving) return;
         setIsSaving(true);
@@ -886,9 +952,20 @@ const Editor: React.FC = () => {
                                 color: '#586069',
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.5px',
-                                flexShrink: 0
+                                flexShrink: 0,
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
                             }}>
-                                CSS
+                                <span>CSS</span>
+                                <LanguageSelect
+                                    value={cssLanguage}
+                                    onChange={(e) => setCssLanguage(e.target.value as 'css' | 'scss' | 'less')}
+                                >
+                                    <option value="css">CSS</option>
+                                    <option value="scss">SCSS</option>
+                                    <option value="less">LESS</option>
+                                </LanguageSelect>
                             </div>
                             <div id="css-editor" style={{
                                 flex: 1,
@@ -928,7 +1005,7 @@ const Editor: React.FC = () => {
                     </div>
                 </EditorContainer>
                 <PreviewContainer>
-                    <Preview html={htmlCode} css={cssCode} js={jsCode} />
+                    <Preview html={htmlCode} css={compiledCss} js={jsCode} />
                 </PreviewContainer>
             </Container>
         </PageContainer>
