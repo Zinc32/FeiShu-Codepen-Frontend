@@ -13,6 +13,8 @@ import Preview from './Preview'; // Import the Preview component
 import UserNavbar from './UserNavbar';
 import * as sass from 'sass';
 import * as less from 'less';
+import Split from 'react-split';
+import { Global } from '@emotion/react';
 
 const PageContainer = styled.div`
     display: flex;
@@ -454,21 +456,23 @@ const DeleteButton = styled.button`
 `;
 
 const LanguageSelect = styled.select`
-    padding: 8px 12px;
+    padding: 4px 12px;
     background: linear-gradient(135deg, #495057 0%, #343a40 100%);
     color: white;
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 8px;
     cursor: pointer;
     font-weight: 500;
-    font-size: 14px;
+    font-size: 12px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    font-weight: 600;
     transition: all 0.2s ease;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     min-width: 120px;
     max-width: 120px;
-    height: 36px;
-    
+    height: 28px;
+
+
     &:hover {
         background: linear-gradient(135deg, #5a6268 0%, #495057 100%);
         border-color: rgba(255, 255, 255, 0.3);
@@ -853,69 +857,93 @@ const Editor: React.FC = () => {
     };
 
     return (
-        <PageContainer>
+        <PageContainer style={{ height: '100vh', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <Global styles={`
+               .gutter {
+                 background-color: #e1e4e8;
+                 background-clip: padding-box;
+                 transition: background 0.2s;
+                 z-index: 10;
+               }
+               .gutter.gutter-horizontal {
+                 cursor: col-resize;
+                 width: 6px;
+               }
+               .gutter.gutter-vertical {
+                 cursor: row-resize;
+                 height: 6px;
+               }
+               .gutter:hover {
+                 background-color: #b3d4fc;
+               }
+            `} />
+            {/* 顶部用户信息栏 */}
             <UserNavbar />
-            <Container>
-                <EditorContainer>
-                    <EditorHeader>
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '16px',
-                            flex: 1,
-                            minWidth: 0,
-                            marginRight: '32px'
-                        }}>
-                            <BackButton onClick={handleBackToHome}>
-                                <span style={{ fontSize: '16px' }}>←</span>
-                                My Pens
-                            </BackButton>
-                            <EditorTitle
-                                value={title}
-                                onChange={(e) => setTitle(e.target.value)}
-                                placeholder="Untitled"
-                            />
-                        </div>
-                        <EditorActions>
-                            <Select onChange={handleLoadPen} value={currentPen?.id || ''}>
-                                <option value="">📁 New Pen</option>
-                                {userPens.map(pen => (
-                                    <option key={pen.id.toString()} value={pen.id.toString()}>{pen.title}</option>
-                                ))}
-                            </Select>
-                            <Button onClick={handleSave} disabled={isSaving || saveSuccess}>
-                                {isSaving ? '💾 Saving...' : saveSuccess ? '✅ Saved!' : '💾 Save'}
-                            </Button>
-                            <DeleteButton
-                                onClick={handleDelete}
-                                disabled={isDeleting || !currentPen}
-                                style={{
-                                    visibility: currentPen ? 'visible' : 'hidden',
-                                    opacity: currentPen ? 1 : 0,
-                                    transition: 'opacity 0.3s ease, visibility 0.3s ease'
-                                }}
-                            >
-                                {isDeleting ? '🗑️ Deleting...' : '🗑️ Delete'}
-                            </DeleteButton>
-                        </EditorActions>
-                    </EditorHeader>
-                    <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        flex: 1,
-                        minHeight: 0,
-                        overflow: 'hidden'
-                    }}>
-                        {/* HTML Editor */}
-                        <div style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            flex: '1 1 0',
-                            minHeight: 0,
-                            overflow: 'hidden'
-                        }}>
+            {/* 顶部操作栏 */}
+            <EditorHeader>
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    flex: 1,
+                    minWidth: 0,
+                    marginRight: '32px'
+                }}>
+                    <BackButton onClick={handleBackToHome}>
+                        <span style={{ fontSize: '16px' }}>←</span>
+                        My Pens
+                    </BackButton>
+                    <EditorTitle
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="Untitled"
+                    />
+                </div>
+                <EditorActions>
+                    <Select onChange={handleLoadPen} value={currentPen?.id || ''}>
+                        <option value="">📁 New Pen</option>
+                        {userPens.map(pen => (
+                            <option key={pen.id.toString()} value={pen.id.toString()}>{pen.title}</option>
+                        ))}
+                    </Select>
+                    <Button onClick={handleSave} disabled={isSaving || saveSuccess}>
+                        {isSaving ? '💾 Saving...' : saveSuccess ? '✅ Saved!' : '💾 Save'}
+                    </Button>
+                    <DeleteButton
+                        onClick={handleDelete}
+                        disabled={isDeleting || !currentPen}
+                        style={{
+                            visibility: currentPen ? 'visible' : 'hidden',
+                            opacity: currentPen ? 1 : 0,
+                            transition: 'opacity 0.3s ease, visibility 0.3s ease'
+                        }}
+                    >
+                        {isDeleting ? '🗑️ Deleting...' : '🗑️ Delete'}
+                    </DeleteButton>
+                </EditorActions>
+            </EditorHeader>
+            {/* 主内容区：左右分为编辑区和预览区 */}
+            <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+                <Split
+                    direction="horizontal"
+                    sizes={[50, 50]}
+                    minSize={150}
+                    gutterSize={6}
+                    style={{ display: 'flex', flex: 1, minHeight: 0, height: '100%' }}
+                >
+                    {/* 左侧编辑区（纵向可拖拽） */}
+                    <Split
+                        direction="vertical"
+                        sizes={[33, 33, 34]}
+                        minSize={36}
+                        gutterSize={6}
+                        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+                    >
+                        {/* HTML 编辑器 */}
+                        <div style={{ minHeight: 0, overflow: 'auto' }}>
                             <div style={{
                                 padding: '8px 12px',
+                                height: '32px',
                                 backgroundColor: '#f8f9fa',
                                 borderBottom: '1px solid #e1e4e8',
                                 fontSize: '12px',
@@ -927,23 +955,13 @@ const Editor: React.FC = () => {
                             }}>
                                 HTML
                             </div>
-                            <div id="html-editor" style={{
-                                flex: 1,
-                                minHeight: 0,
-                                overflow: 'hidden'
-                            }} />
+                            <div id="html-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
-
-                        {/* CSS Editor */}
-                        <div style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            flex: '1 1 0',
-                            minHeight: 0,
-                            overflow: 'hidden'
-                        }}>
+                        {/* CSS 编辑器 */}
+                        <div style={{minHeight: 0, overflow: 'auto' }}>
                             <div style={{
                                 padding: '8px 12px',
+                                height: '32px',
                                 backgroundColor: '#f8f9fa',
                                 borderBottom: '1px solid #e1e4e8',
                                 borderTop: '1px solid #e1e4e8',
@@ -967,23 +985,13 @@ const Editor: React.FC = () => {
                                     <option value="less">LESS</option>
                                 </LanguageSelect>
                             </div>
-                            <div id="css-editor" style={{
-                                flex: 1,
-                                minHeight: 0,
-                                overflow: 'hidden'
-                            }} />
+                            <div id="css-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
-
-                        {/* JavaScript Editor */}
-                        <div style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            flex: '1 1 0',
-                            minHeight: 0,
-                            overflow: 'hidden'
-                        }}>
+                        {/* JS 编辑器 */}
+                        <div style={{ minHeight: 0, overflow: 'auto' }}>
                             <div style={{
                                 padding: '8px 12px',
+                                height: '32px',
                                 backgroundColor: '#f8f9fa',
                                 borderBottom: '1px solid #e1e4e8',
                                 borderTop: '1px solid #e1e4e8',
@@ -996,18 +1004,15 @@ const Editor: React.FC = () => {
                             }}>
                                 JavaScript
                             </div>
-                            <div id="js-editor" style={{
-                                flex: 1,
-                                minHeight: 0,
-                                overflow: 'hidden'
-                            }} />
+                            <div id="js-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
-                    </div>
-                </EditorContainer>
-                <PreviewContainer>
-                    <Preview html={htmlCode} css={compiledCss} js={jsCode} />
-                </PreviewContainer>
-            </Container>
+                    </Split>
+                    {/* 右侧预览区 */}
+                    <PreviewContainer>
+                        <Preview html={htmlCode} css={compiledCss} js={jsCode} />
+                    </PreviewContainer>
+                </Split>
+            </div>
         </PageContainer>
     );
 };
