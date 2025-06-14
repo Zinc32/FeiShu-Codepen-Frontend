@@ -505,6 +505,7 @@ const Editor: React.FC = () => {
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [userPens, setUserPens] = useState<Pen[]>([]);
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
     // State to hold the content for the preview
     const [htmlCode, setHtmlCode] = useState('<div>Hello World</div>'); // Initialize with default HTML
@@ -761,6 +762,46 @@ const Editor: React.FC = () => {
         }
     }, [cssCode, cssLanguage, compileCss]);
 
+    // 检测内容是否有变化
+    const checkForChanges = useCallback(() => {
+        if (!currentPen) {
+            // 新建状态下，如果内容不是默认内容，则认为有变化
+            const hasChanges = 
+                htmlCode !== '<div>Hello World</div>' ||
+                cssCode !== 'body { color: blue; }' ||
+                jsCode !== 'console.log("Hello World");' ||
+                title !== 'Untitled';
+            setHasUnsavedChanges(hasChanges);
+        } else {
+            // 编辑状态下，比较当前内容与保存的内容
+            const hasChanges = 
+                htmlCode !== currentPen.html ||
+                cssCode !== currentPen.css ||
+                jsCode !== currentPen.js ||
+                title !== currentPen.title;
+            setHasUnsavedChanges(hasChanges);
+        }
+    }, [htmlCode, cssCode, jsCode, title, currentPen]);
+
+    // 监听内容变化
+    useEffect(() => {
+        checkForChanges();
+    }, [checkForChanges]);
+
+    // 页面关闭/刷新时的提示
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = '您有未保存的更改，确定要离开吗？';
+                return '您有未保存的更改，确定要离开吗？';
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [hasUnsavedChanges]);
+
     const handleSave = async () => {
         if (isSaving) return;
         setIsSaving(true);
@@ -785,9 +826,14 @@ const Editor: React.FC = () => {
                 const newPen = await createPen(penData);
                 setCurrentPen(newPen);
                 console.log('New pen created successfully:', newPen.title);
+                // 更新 URL 到新创建的 pen ID，避免跳到新的空白 pen
+                navigate(`/editor/${newPen.id}`, { replace: true });
             }
             // 刷新用户的pen列表
             await fetchUserPens();
+
+            // 保存成功后清除未保存标记
+            setHasUnsavedChanges(false);
 
             // 显示保存成功反馈
             setSaveSuccess(true);
@@ -801,8 +847,13 @@ const Editor: React.FC = () => {
     };
 
     const handleNew = useCallback(() => {
+        if (hasUnsavedChanges) {
+            const confirmLeave = window.confirm('您有未保存的更改，确定要创建新的 Pen 吗？');
+            if (!confirmLeave) return;
+        }
         initializeNewPen();
-    }, [initializeNewPen]);
+        setHasUnsavedChanges(false);
+    }, [initializeNewPen, hasUnsavedChanges]);
 
     const handleDelete = async () => {
         if (!currentPen || isDeleting) return;
@@ -827,10 +878,23 @@ const Editor: React.FC = () => {
     };
 
     const handleBackToHome = () => {
+        if (hasUnsavedChanges) {
+            const confirmLeave = window.confirm('您有未保存的更改，确定要离开吗？');
+            if (!confirmLeave) return;
+        }
         navigate('/pens');
     };
 
     const handleLoadPen = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        if (hasUnsavedChanges) {
+            const confirmLeave = window.confirm('您有未保存的更改，确定要切换到其他 Pen 吗？');
+            if (!confirmLeave) {
+                // 重置选择框到当前pen
+                e.target.value = currentPen?.id.toString() || '';
+                return;
+            }
+        }
+
         const penId = e.target.value;
 
         if (!penId) {
@@ -851,6 +915,7 @@ const Editor: React.FC = () => {
             setHtmlCode(selectedPen.html);
             setCssCode(selectedPen.css);
             setJsCode(selectedPen.js);
+            setHasUnsavedChanges(false);
         } else {
             handleNew();
         }
