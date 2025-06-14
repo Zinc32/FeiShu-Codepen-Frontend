@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { EditorView, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, keymap, EditorViewConfig } from '@codemirror/view';
 import { EditorState, Extension, Transaction } from '@codemirror/state';
 import { javascript } from '@codemirror/lang-javascript';
@@ -8,12 +8,20 @@ import { css } from '@codemirror/lang-css';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import styled from '@emotion/styled';
-import { createPen, updatePen, getUserPens, Pen, PenData } from '../services/penService';
+import { createPen, updatePen, getUserPens, getPen, deletePen, Pen, PenData } from '../services/penService';
 import Preview from './Preview'; // Import the Preview component
+import UserNavbar from './UserNavbar';
+
+const PageContainer = styled.div`
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background-color: #f6f8fa;
+`;
 
 const Container = styled.div`
     display: flex;
-    height: 100vh;
+    flex: 1;
     background-color: #f6f8fa;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
 `;
@@ -24,7 +32,7 @@ const EditorContainer = styled.div`
     flex-direction: column;
     border-right: 1px solid #e1e4e8;
     background-color: #ffffff;
-    height: 100vh;
+    height: 100%;
     overflow: hidden;
 
     .cm-editor {
@@ -233,12 +241,24 @@ const EditorHeader = styled.div`
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 20px;
+    padding: 20px 24px;
     background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
     color: white;
     flex-shrink: 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    min-height: 80px;
+    
+    @media (max-width: 1024px) {
+        padding: 18px 20px;
+    }
+    
+    @media (max-width: 768px) {
+        flex-direction: column;
+        gap: 16px;
+        padding: 16px 20px;
+        min-height: auto;
+    }
 `;
 
 const EditorTitle = styled.input`
@@ -248,11 +268,13 @@ const EditorTitle = styled.input`
     color: white;
     font-size: 14px;
     font-weight: 600;
-    padding: 8px 16px;
-    min-width: 200px;
+    padding: 10px 16px;
+    min-width: 120px;
+    max-width: 220px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
     transition: all 0.2s ease;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    flex: 1;
     
     &:hover {
         background: rgba(255, 255, 255, 0.12);
@@ -278,11 +300,25 @@ const EditorTitle = styled.input`
 const EditorActions = styled.div`
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
+    min-width: 380px;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    
+    @media (max-width: 1024px) {
+        min-width: 340px;
+        gap: 12px;
+    }
+    
+    @media (max-width: 768px) {
+        gap: 10px;
+        min-width: auto;
+        flex-wrap: wrap;
+    }
 `;
 
 const Button = styled.button`
-    padding: 8px 16px;
+    padding: 10px 18px;
     background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
     color: white;
     border: none;
@@ -293,6 +329,8 @@ const Button = styled.button`
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
     transition: all 0.2s ease;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    min-width: 90px;
+    white-space: nowrap;
     
     &:hover {
         background: linear-gradient(135deg, #218838 0%, #1ea085 100%);
@@ -328,6 +366,8 @@ const BackButton = styled.button`
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
     transition: all 0.2s ease;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    white-space: nowrap;
+    flex-shrink: 0;
     
     &:hover {
         background: linear-gradient(135deg, #5a6268 0%, #343a40 100%);
@@ -342,7 +382,7 @@ const BackButton = styled.button`
 `;
 
 const Select = styled.select`
-    padding: 8px 12px;
+    padding: 10px 14px;
     background: linear-gradient(135deg, #495057 0%, #343a40 100%);
     color: white;
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -354,6 +394,8 @@ const Select = styled.select`
     transition: all 0.2s ease;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     min-width: 140px;
+    max-width: 140px;
+    height: 44px;
     
     &:hover {
         background: linear-gradient(135deg, #5a6268 0%, #495057 100%);
@@ -375,14 +417,51 @@ const Select = styled.select`
     }
 `;
 
+const DeleteButton = styled.button`
+    padding: 10px 18px;
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    min-width: 110px;
+    white-space: nowrap;
+    
+    &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+    
+    &:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    &:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+`;
+
 const Editor: React.FC = () => {
     const navigate = useNavigate();
+    const params = useParams();
     const [htmlEditor, setHtmlEditor] = useState<EditorView | null>(null);
     const [cssEditor, setCssEditor] = useState<EditorView | null>(null);
     const [jsEditor, setJsEditor] = useState<EditorView | null>(null);
     const [title, setTitle] = useState('Untitled');
     const [currentPen, setCurrentPen] = useState<Pen | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [saveSuccess, setSaveSuccess] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [userPens, setUserPens] = useState<Pen[]>([]);
 
     // State to hold the content for the preview
@@ -399,9 +478,55 @@ const Editor: React.FC = () => {
         }
     }, []);
 
+    const initializeNewPen = useCallback(() => {
+        console.log('initializeNewPen called');
+        setTitle('Untitled');
+        setCurrentPen(null);
+        const defaultHtml = '<div>Hello World</div>';
+        const defaultCss = 'body { color: blue; }';
+        const defaultJs = 'console.log("Hello World");';
+
+        setHtmlCode(defaultHtml);
+        setCssCode(defaultCss);
+        setJsCode(defaultJs);
+    }, []);
+
+    // 加载单个Pen的函数（仿照handleLoadPen的逻辑）
+    const loadPenById = useCallback(async (penId: string) => {
+        try {
+            console.log('Loading pen by ID:', penId);
+            const pen = await getPen(penId);
+            console.log('Loaded pen:', pen);
+
+            setCurrentPen(pen);
+            setTitle(pen.title);
+
+            // 仿照下拉选择的逻辑，更新React state
+            setHtmlCode(pen.html);
+            setCssCode(pen.css);
+            setJsCode(pen.js);
+        } catch (error) {
+            console.error('Failed to load pen by ID:', error);
+            // 如果加载失败，显示默认内容
+            initializeNewPen();
+        }
+    }, [initializeNewPen]);
+
     useEffect(() => {
         fetchUserPens();
     }, [fetchUserPens]);
+
+    // 处理URL参数，加载对应的Pen
+    useEffect(() => {
+        const penId = params.id;
+        if (penId && userPens.length > 0) {
+            // 确保userPens已经加载完成再加载具体的pen
+            loadPenById(penId);
+        } else if (!penId) {
+            // 如果没有ID参数，显示默认的新建状态
+            initializeNewPen();
+        }
+    }, [params.id, userPens.length, loadPenById, initializeNewPen]);
 
     // 添加一个标志来跟踪是否是程序性更新
     const [isUpdatingFromState, setIsUpdatingFromState] = useState(false);
@@ -569,6 +694,7 @@ const Editor: React.FC = () => {
     const handleSave = async () => {
         if (isSaving) return;
         setIsSaving(true);
+        setSaveSuccess(false);
 
         try {
             const penData: PenData = {
@@ -580,33 +706,55 @@ const Editor: React.FC = () => {
             };
 
             if (currentPen) {
+                // 更新现有文件
                 const updatedPen = await updatePen(currentPen.id, penData);
                 setCurrentPen(updatedPen);
+                console.log('Pen updated successfully:', updatedPen.title);
             } else {
+                // 创建新文件
                 const newPen = await createPen(penData);
                 setCurrentPen(newPen);
+                console.log('New pen created successfully:', newPen.title);
             }
-            fetchUserPens(); // Refresh the list of pens after saving
+            // 刷新用户的pen列表
+            await fetchUserPens();
+
+            // 显示保存成功反馈
+            setSaveSuccess(true);
+            setTimeout(() => setSaveSuccess(false), 2000); // 2秒后隐藏成功提示
         } catch (error) {
             console.error('Save error:', error);
+            alert('保存失败，请重试');
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleNew = useCallback(() => {
-        console.log('handleNew called');
-        setTitle('Untitled');
-        setCurrentPen(null);
-        const defaultHtml = '<div>Hello World</div>';
-        const defaultCss = 'body { color: blue; }';
-        const defaultJs = 'console.log("Hello World");';
+        initializeNewPen();
+    }, [initializeNewPen]);
 
-        // 只更新React state，useEffect会自动同步到编辑器（就像预览组件）
-        setHtmlCode(defaultHtml);
-        setCssCode(defaultCss);
-        setJsCode(defaultJs);
-    }, []);
+    const handleDelete = async () => {
+        if (!currentPen || isDeleting) return;
+
+        const confirmDelete = window.confirm(`确定要删除 "${currentPen.title}" 吗？此操作无法撤销。`);
+        if (!confirmDelete) return;
+
+        setIsDeleting(true);
+        try {
+            await deletePen(currentPen.id);
+            // 删除成功后，重新获取用户的pen列表
+            await fetchUserPens();
+            // 重置为新建状态
+            initializeNewPen();
+            console.log('Pen deleted successfully');
+        } catch (error) {
+            console.error('Delete error:', error);
+            alert('删除失败，请重试');
+        } finally {
+            setIsDeleting(false);
+        }
+    };
 
     const handleBackToHome = () => {
         navigate('/pens');
@@ -614,6 +762,13 @@ const Editor: React.FC = () => {
 
     const handleLoadPen = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const penId = e.target.value;
+
+        if (!penId) {
+            // 选择了"New Pen"选项
+            handleNew();
+            return;
+        }
+
         const selectedPen = userPens.find(pen => pen.id === penId);
         console.log('handleLoadPen called:', penId, selectedPen);
 
@@ -632,131 +787,151 @@ const Editor: React.FC = () => {
     };
 
     return (
-        <Container>
-            <EditorContainer>
-                <EditorHeader>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <BackButton onClick={handleBackToHome}>
-                            <span style={{ fontSize: '16px' }}>←</span>
-                            My Pens
-                        </BackButton>
-                        <EditorTitle
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            placeholder="Untitled"
-                        />
-                    </div>
-                    <EditorActions>
-                        <Button onClick={handleNew}>New</Button>
-                        <Select onChange={handleLoadPen} value={currentPen?.id || ''}>
-                            <option value="">Load Pen</option>
-                            {userPens.map(pen => (
-                                <option key={pen.id.toString()} value={pen.id.toString()}>{pen.title}</option>
-                            ))}
-                        </Select>
-                        <Button onClick={handleSave} disabled={isSaving}>
-                            {isSaving ? 'Saving...' : 'Save'}
-                        </Button>
-                    </EditorActions>
-                </EditorHeader>
-                <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    flex: 1,
-                    minHeight: 0,
-                    overflow: 'hidden'
-                }}>
-                    {/* HTML Editor */}
+        <PageContainer>
+            <UserNavbar />
+            <Container>
+                <EditorContainer>
+                    <EditorHeader>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '16px',
+                            flex: 1,
+                            minWidth: 0,
+                            marginRight: '32px'
+                        }}>
+                            <BackButton onClick={handleBackToHome}>
+                                <span style={{ fontSize: '16px' }}>←</span>
+                                My Pens
+                            </BackButton>
+                            <EditorTitle
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                placeholder="Untitled"
+                            />
+                        </div>
+                        <EditorActions>
+                            <Select onChange={handleLoadPen} value={currentPen?.id || ''}>
+                                <option value="">📁 New Pen</option>
+                                {userPens.map(pen => (
+                                    <option key={pen.id.toString()} value={pen.id.toString()}>{pen.title}</option>
+                                ))}
+                            </Select>
+                            <Button onClick={handleSave} disabled={isSaving || saveSuccess}>
+                                {isSaving ? '💾 Saving...' : saveSuccess ? '✅ Saved!' : '💾 Save'}
+                            </Button>
+                            <DeleteButton
+                                onClick={handleDelete}
+                                disabled={isDeleting || !currentPen}
+                                style={{
+                                    visibility: currentPen ? 'visible' : 'hidden',
+                                    opacity: currentPen ? 1 : 0,
+                                    transition: 'opacity 0.3s ease, visibility 0.3s ease'
+                                }}
+                            >
+                                {isDeleting ? '🗑️ Deleting...' : '🗑️ Delete'}
+                            </DeleteButton>
+                        </EditorActions>
+                    </EditorHeader>
                     <div style={{
                         display: 'flex',
                         flexDirection: 'column',
                         flex: 1,
                         minHeight: 0,
-                        maxHeight: '33.333%'
+                        overflow: 'hidden'
                     }}>
+                        {/* HTML Editor */}
                         <div style={{
-                            padding: '8px 12px',
-                            backgroundColor: '#f8f9fa',
-                            borderBottom: '1px solid #e1e4e8',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            color: '#586069',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px',
-                            flexShrink: 0
-                        }}>
-                            HTML
-                        </div>
-                        <div id="html-editor" style={{
-                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            flex: '1 1 0',
                             minHeight: 0,
                             overflow: 'hidden'
-                        }} />
-                    </div>
+                        }}>
+                            <div style={{
+                                padding: '8px 12px',
+                                backgroundColor: '#f8f9fa',
+                                borderBottom: '1px solid #e1e4e8',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                color: '#586069',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px',
+                                flexShrink: 0
+                            }}>
+                                HTML
+                            </div>
+                            <div id="html-editor" style={{
+                                flex: 1,
+                                minHeight: 0,
+                                overflow: 'hidden'
+                            }} />
+                        </div>
 
-                    {/* CSS Editor */}
-                    <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        flex: 1,
-                        minHeight: 0,
-                        maxHeight: '33.333%'
-                    }}>
+                        {/* CSS Editor */}
                         <div style={{
-                            padding: '8px 12px',
-                            backgroundColor: '#f8f9fa',
-                            borderBottom: '1px solid #e1e4e8',
-                            borderTop: '1px solid #e1e4e8',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            color: '#586069',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px',
-                            flexShrink: 0
-                        }}>
-                            CSS
-                        </div>
-                        <div id="css-editor" style={{
-                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            flex: '1 1 0',
                             minHeight: 0,
                             overflow: 'hidden'
-                        }} />
-                    </div>
+                        }}>
+                            <div style={{
+                                padding: '8px 12px',
+                                backgroundColor: '#f8f9fa',
+                                borderBottom: '1px solid #e1e4e8',
+                                borderTop: '1px solid #e1e4e8',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                color: '#586069',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px',
+                                flexShrink: 0
+                            }}>
+                                CSS
+                            </div>
+                            <div id="css-editor" style={{
+                                flex: 1,
+                                minHeight: 0,
+                                overflow: 'hidden'
+                            }} />
+                        </div>
 
-                    {/* JavaScript Editor */}
-                    <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        flex: 1,
-                        minHeight: 0,
-                        maxHeight: '33.333%'
-                    }}>
+                        {/* JavaScript Editor */}
                         <div style={{
-                            padding: '8px 12px',
-                            backgroundColor: '#f8f9fa',
-                            borderBottom: '1px solid #e1e4e8',
-                            borderTop: '1px solid #e1e4e8',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            color: '#586069',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px',
-                            flexShrink: 0
-                        }}>
-                            JavaScript
-                        </div>
-                        <div id="js-editor" style={{
-                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            flex: '1 1 0',
                             minHeight: 0,
                             overflow: 'hidden'
-                        }} />
+                        }}>
+                            <div style={{
+                                padding: '8px 12px',
+                                backgroundColor: '#f8f9fa',
+                                borderBottom: '1px solid #e1e4e8',
+                                borderTop: '1px solid #e1e4e8',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                color: '#586069',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px',
+                                flexShrink: 0
+                            }}>
+                                JavaScript
+                            </div>
+                            <div id="js-editor" style={{
+                                flex: 1,
+                                minHeight: 0,
+                                overflow: 'hidden'
+                            }} />
+                        </div>
                     </div>
-                </div>
-            </EditorContainer>
-            <PreviewContainer>
-                <Preview html={htmlCode} css={cssCode} js={jsCode} />
-            </PreviewContainer>
-        </Container>
+                </EditorContainer>
+                <PreviewContainer>
+                    <Preview html={htmlCode} css={cssCode} js={jsCode} />
+                </PreviewContainer>
+            </Container>
+        </PageContainer>
     );
 };
 

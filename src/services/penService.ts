@@ -9,8 +9,14 @@ export interface PenData {
     isPublic?: boolean;
 }
 
-export interface Pen extends PenData {
+export interface Pen {
     id: string;
+    title: string;
+    description?: string;
+    html: string;
+    css: string;
+    js: string;
+    isPublic: boolean;
     userId: string;
     createdAt: string;
     updatedAt: string;
@@ -42,6 +48,16 @@ export const getUserPens = async () => {
         return response.data;
     } catch (error) {
         console.error('Get user pens error:', error);
+        throw error;
+    }
+};
+
+export const getPen = async (id: string) => {
+    try {
+        const response = await api.get(`/pens/${id}`);
+        return response.data;
+    } catch (error) {
+        console.error('Get pen error:', error);
         throw error;
     }
 };
