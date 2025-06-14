@@ -75,7 +75,7 @@ $font-stack: Arial, sans-serif;
 ```
 
 效果
-![image-20250614232541234](assets/image-20250614232541234.png)
+![displayOfscss](assets/displayOfscss.png)
 
 LESS
 
@@ -113,4 +113,4 @@ LESS
 ```
 
 效果
-![image-20250614232416422](assets/image-20250614232416422.png)
+![displayOfless](assets/displayOfless.png)
