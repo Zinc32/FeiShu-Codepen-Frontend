@@ -1163,7 +1163,7 @@ const Editor: React.FC = () => {
                         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
                     >
                         {/* HTML 编辑器 */}
-                        <div style={{ minHeight: 0, overflow: 'auto' }}>
+                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -1174,14 +1174,17 @@ const Editor: React.FC = () => {
                                 color: '#586069',
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.5px',
-                                flexShrink: 0
+                                flexShrink: 0,
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 10
                             }}>
                                 HTML
                             </div>
                             <div id="html-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* CSS 编辑器 */}
-                        <div style={{minHeight: 0, overflow: 'auto' }}>
+                        <div style={{minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -1196,7 +1199,10 @@ const Editor: React.FC = () => {
                                 flexShrink: 0,
                                 display: 'flex',
                                 justifyContent: 'space-between',
-                                alignItems: 'center'
+                                alignItems: 'center',
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 10
                             }}>
                                 <span>CSS</span>
                                 <LanguageSelect
@@ -1211,7 +1217,7 @@ const Editor: React.FC = () => {
                             <div id="css-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* JS 编辑器 */}
-                        <div style={{ minHeight: 0, overflow: 'auto' }}>
+                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -1226,7 +1232,10 @@ const Editor: React.FC = () => {
                                 flexShrink: 0,
                                 display: 'flex',
                                 justifyContent: 'space-between',
-                                alignItems: 'center'
+                                alignItems: 'center',
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 10
                             }}>
                                 <span>JavaScript</span>
                                 <LanguageSelect
