@@ -3,9 +3,9 @@ import styled from '@emotion/styled';
 
 const PreviewContainer = styled.div`
   height: 100%;
-  overflow: auto;
+  width: 100%;
+  overflow: hidden;
   background: white;
-  padding: 20px;
 `;
 
 interface PreviewProps {
@@ -30,7 +30,15 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js }) => {
         <html>
           <head>
             <meta charset="UTF-8">
-            <style>${css}</style>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+              body {
+                margin: 0;
+                padding: 0;
+                overflow-x: hidden;
+              }
+              ${css}
+            </style>
           </head>
           <body>
             ${html}

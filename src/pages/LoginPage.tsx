@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import styled from '@emotion/styled';
+import { useAuth } from '../contexts/AuthContext';
 import { login, LoginData } from '../services/authService';
 
 const Container = styled.div`
@@ -75,11 +76,18 @@ const RegisterLink = styled(Link)`
 
 const LoginPage: React.FC = () => {
     const navigate = useNavigate();
+    const { login: authLogin, isAuthenticated } = useAuth();
     const [formData, setFormData] = useState<LoginData>({
         email: '',
         password: ''
     });
     const [error, setError] = useState('');
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            navigate('/pens');
+        }
+    }, [isAuthenticated, navigate]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData({
@@ -91,8 +99,8 @@ const LoginPage: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await login(formData);
-            navigate('/editor');
+            await authLogin(formData.email, formData.password);
+            navigate('/pens');
         } catch (err: any) {
             setError(err.response?.data?.message || '登录失败');
         }

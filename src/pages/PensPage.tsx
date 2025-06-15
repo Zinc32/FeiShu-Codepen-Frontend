@@ -52,19 +52,63 @@ const PenGrid = styled.div`
 `;
 
 const PenCard = styled(Link)`
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    position: relative;
+    display: flex;
+    flex-direction: column;
     padding: 20px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     text-decoration: none;
     color: inherit;
-    transition: all 0.3s ease;
-    border: 1px solid #e0e0e0;
-    
+    transition: transform 0.2s, box-shadow 0.2s;
+    min-height: 200px;
+
     &:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-        border-color: #667eea;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+`;
+
+const ShareButton = styled.button`
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: background-color 0.2s;
+
+    &:hover {
+        background: #45a049;
+    }
+`;
+
+const Toast = styled.div`
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 4px;
+    font-size: 14px;
+    z-index: 1000;
+    animation: fadeInOut 2s ease-in-out;
+
+    @keyframes fadeInOut {
+        0% { opacity: 0; }
+        15% { opacity: 1; }
+        85% { opacity: 1; }
+        100% { opacity: 0; }
     }
 `;
 
@@ -133,6 +177,8 @@ const EmptyText = styled.p`
 const PensPage: React.FC = () => {
     const [pens, setPens] = useState<Pen[]>([]);
     const [loading, setLoading] = useState(true);
+    const [showToast, setShowToast] = useState(false);
+    const [toastMessage, setToastMessage] = useState('');
 
     useEffect(() => {
         const loadPens = async () => {
@@ -148,6 +194,21 @@ const PensPage: React.FC = () => {
 
         loadPens();
     }, []);
+
+    const handleShare = (e: React.MouseEvent, penId: string) => {
+        e.preventDefault(); // 阻止链接跳转
+        const shareUrl = `${window.location.origin}/p/${penId}`;
+        navigator.clipboard.writeText(shareUrl).then(() => {
+            setToastMessage('分享链接已复制到剪贴板！');
+            setShowToast(true);
+            setTimeout(() => setShowToast(false), 2000);
+        }).catch(err => {
+            console.error('复制失败:', err);
+            setToastMessage('复制失败，请手动复制链接');
+            setShowToast(true);
+            setTimeout(() => setShowToast(false), 2000);
+        });
+    };
 
     if (loading) {
         return (
@@ -186,6 +247,9 @@ const PensPage: React.FC = () => {
                     <PenGrid>
                         {pens.map((pen) => (
                             <PenCard key={pen.id} to={`/editor/${pen.id}`}>
+                                <ShareButton onClick={(e) => handleShare(e, pen.id)}>
+                                    🔗 分享
+                                </ShareButton>
                                 <PenTitle>{pen.title}</PenTitle>
                                 <PenDescription>
                                     {pen.description || '暂无描述'}
@@ -203,6 +267,7 @@ const PensPage: React.FC = () => {
                     </PenGrid>
                 )}
             </Container>
+            {showToast && <Toast>{toastMessage}</Toast>}
         </PageContainer>
     );
 };

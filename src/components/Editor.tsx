@@ -11,6 +11,11 @@ import styled from '@emotion/styled';
 import { createPen, updatePen, getUserPens, getPen, deletePen, Pen, PenData } from '../services/penService';
 import Preview from './Preview'; // Import the Preview component
 import UserNavbar from './UserNavbar';
+import * as sass from 'sass';
+import * as less from 'less';
+import Split from 'react-split';
+import { Global } from '@emotion/react';
+import { useAuth } from '../contexts/AuthContext';
 
 const PageContainer = styled.div`
     display: flex;
@@ -299,22 +304,8 @@ const EditorTitle = styled.input`
 
 const EditorActions = styled.div`
     display: flex;
+    gap: 12px;
     align-items: center;
-    gap: 14px;
-    min-width: 380px;
-    justify-content: flex-end;
-    flex-shrink: 0;
-    
-    @media (max-width: 1024px) {
-        min-width: 340px;
-        gap: 12px;
-    }
-    
-    @media (max-width: 768px) {
-        gap: 10px;
-        min-width: auto;
-        flex-wrap: wrap;
-    }
 `;
 
 const Button = styled.button`
@@ -451,8 +442,126 @@ const DeleteButton = styled.button`
     }
 `;
 
+const LanguageSelect = styled.select`
+    padding: 4px 12px;
+    background: linear-gradient(135deg, #495057 0%, #343a40 100%);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    min-width: 120px;
+    max-width: 120px;
+    height: 28px;
+
+
+    &:hover {
+        background: linear-gradient(135deg, #5a6268 0%, #495057 100%);
+        border-color: rgba(255, 255, 255, 0.3);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+    
+    &:focus {
+        outline: none;
+        border-color: #0366d6;
+        box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.1);
+    }
+    
+    option {
+        background-color: #343a40;
+        color: white;
+        padding: 8px;
+    }
+`;
+
+const ShareButton = styled(Button)`
+    background-color: #4CAF50;
+    &:hover {
+        background-color: #45a049;
+    }
+`;
+
+const ShareModal = styled.div`
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    min-width: 400px;
+`;
+
+const ShareInput = styled.input`
+    width: 100%;
+    padding: 8px;
+    margin: 8px 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+`;
+
+const ShareTitle = styled.h3`
+    margin: 0 0 16px 0;
+    color: #333;
+`;
+
+const ShareClose = styled.button`
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #666;
+    &:hover {
+        color: #333;
+    }
+`;
+
+const Overlay = styled.div`
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+`;
+
+const Toast = styled.div`
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 4px;
+    font-size: 14px;
+    z-index: 1000;
+    animation: fadeInOut 2s ease-in-out;
+
+    @keyframes fadeInOut {
+        0% { opacity: 0; }
+        15% { opacity: 1; }
+        85% { opacity: 1; }
+        100% { opacity: 0; }
+    }
+`;
+
 const Editor: React.FC = () => {
     const navigate = useNavigate();
+    const { isAuthenticated } = useAuth();
     const params = useParams();
     const [htmlEditor, setHtmlEditor] = useState<EditorView | null>(null);
     const [cssEditor, setCssEditor] = useState<EditorView | null>(null);
@@ -463,11 +572,18 @@ const Editor: React.FC = () => {
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [userPens, setUserPens] = useState<Pen[]>([]);
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [shareUrl, setShareUrl] = useState('');
+    const [showToast, setShowToast] = useState(false);
+    const [toastMessage, setToastMessage] = useState('');
 
     // State to hold the content for the preview
     const [htmlCode, setHtmlCode] = useState('<div>Hello World</div>'); // Initialize with default HTML
     const [cssCode, setCssCode] = useState('body { color: blue; }'); // Initialize with default CSS
     const [jsCode, setJsCode] = useState('console.log("Hello World");'); // Initialize with default JS
+    const [cssLanguage, setCssLanguage] = useState<'css' | 'scss' | 'less'>('css');
+    const [compiledCss, setCompiledCss] = useState('');
 
     const fetchUserPens = useCallback(async () => {
         try {
@@ -513,8 +629,12 @@ const Editor: React.FC = () => {
     }, [initializeNewPen]);
 
     useEffect(() => {
+        if (!isAuthenticated) {
+            navigate('/login');
+            return;
+        }
         fetchUserPens();
-    }, [fetchUserPens]);
+    }, [isAuthenticated, navigate, fetchUserPens]);
 
     // 处理URL参数，加载对应的Pen
     useEffect(() => {
@@ -691,6 +811,72 @@ const Editor: React.FC = () => {
         }
     }, [htmlCode, cssCode, jsCode, htmlEditor, cssEditor, jsEditor, isUpdatingFromState]);
 
+    // 编译 CSS 预处理器代码
+    const compileCss = useCallback(async (code: string, language: 'scss' | 'less') => {
+        try {
+            if (language === 'scss') {
+                const result = sass.compileString(code);
+                return result.css;
+            } else if (language === 'less') {
+                const result = await less.render(code);
+                return result.css;
+            }
+            return code;
+        } catch (error) {
+            console.error(`Error compiling ${language}:`, error);
+            return code;
+        }
+    }, []);
+
+    // 当 CSS 代码或语言改变时重新编译
+    useEffect(() => {
+        if (cssLanguage !== 'css') {
+            compileCss(cssCode, cssLanguage).then(setCompiledCss);
+        } else {
+            setCompiledCss(cssCode);
+        }
+    }, [cssCode, cssLanguage, compileCss]);
+
+    // 检测内容是否有变化
+    const checkForChanges = useCallback(() => {
+        if (!currentPen) {
+            // 新建状态下，如果内容不是默认内容，则认为有变化
+            const hasChanges = 
+                htmlCode !== '<div>Hello World</div>' ||
+                cssCode !== 'body { color: blue; }' ||
+                jsCode !== 'console.log("Hello World");' ||
+                title !== 'Untitled';
+            setHasUnsavedChanges(hasChanges);
+        } else {
+            // 编辑状态下，比较当前内容与保存的内容
+            const hasChanges = 
+                htmlCode !== currentPen.html ||
+                cssCode !== currentPen.css ||
+                jsCode !== currentPen.js ||
+                title !== currentPen.title;
+            setHasUnsavedChanges(hasChanges);
+        }
+    }, [htmlCode, cssCode, jsCode, title, currentPen]);
+
+    // 监听内容变化
+    useEffect(() => {
+        checkForChanges();
+    }, [checkForChanges]);
+
+    // 页面关闭/刷新时的提示
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = '您有未保存的更改，确定要离开吗？';
+                return '您有未保存的更改，确定要离开吗？';
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [hasUnsavedChanges]);
+
     const handleSave = async () => {
         if (isSaving) return;
         setIsSaving(true);
@@ -715,9 +901,14 @@ const Editor: React.FC = () => {
                 const newPen = await createPen(penData);
                 setCurrentPen(newPen);
                 console.log('New pen created successfully:', newPen.title);
+                // 更新 URL 到新创建的 pen ID，避免跳到新的空白 pen
+                navigate(`/editor/${newPen.id}`, { replace: true });
             }
             // 刷新用户的pen列表
             await fetchUserPens();
+
+            // 保存成功后清除未保存标记
+            setHasUnsavedChanges(false);
 
             // 显示保存成功反馈
             setSaveSuccess(true);
@@ -731,8 +922,13 @@ const Editor: React.FC = () => {
     };
 
     const handleNew = useCallback(() => {
+        if (hasUnsavedChanges) {
+            const confirmLeave = window.confirm('您有未保存的更改，确定要创建新的 Pen 吗？');
+            if (!confirmLeave) return;
+        }
         initializeNewPen();
-    }, [initializeNewPen]);
+        setHasUnsavedChanges(false);
+    }, [initializeNewPen, hasUnsavedChanges]);
 
     const handleDelete = async () => {
         if (!currentPen || isDeleting) return;
@@ -757,10 +953,23 @@ const Editor: React.FC = () => {
     };
 
     const handleBackToHome = () => {
+        if (hasUnsavedChanges) {
+            const confirmLeave = window.confirm('您有未保存的更改，确定要离开吗？');
+            if (!confirmLeave) return;
+        }
         navigate('/pens');
     };
 
     const handleLoadPen = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        if (hasUnsavedChanges) {
+            const confirmLeave = window.confirm('您有未保存的更改，确定要切换到其他 Pen 吗？');
+            if (!confirmLeave) {
+                // 重置选择框到当前pen
+                e.target.value = currentPen?.id.toString() || '';
+                return;
+            }
+        }
+
         const penId = e.target.value;
 
         if (!penId) {
@@ -781,75 +990,122 @@ const Editor: React.FC = () => {
             setHtmlCode(selectedPen.html);
             setCssCode(selectedPen.css);
             setJsCode(selectedPen.js);
+            setHasUnsavedChanges(false);
         } else {
             handleNew();
         }
     };
 
+    const handleShare = () => {
+        if (!currentPen) return;
+        const url = `${window.location.origin}/p/${currentPen.id}`;
+        setShareUrl(url);
+        setShowShareModal(true);
+    };
+
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(shareUrl);
+        setToastMessage('链接已复制到剪贴板！');
+        setShowToast(true);
+        setShowShareModal(false);
+        setTimeout(() => {
+            setShowToast(false);
+        }, 2000);
+    };
+
     return (
-        <PageContainer>
+        <PageContainer style={{ height: '100vh', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <Global styles={`
+               .gutter {
+                 background-color: #e1e4e8;
+                 background-clip: padding-box;
+                 transition: background 0.2s;
+                 z-index: 10;
+               }
+               .gutter.gutter-horizontal {
+                 cursor: col-resize;
+                 width: 6px;
+               }
+               .gutter.gutter-vertical {
+                 cursor: row-resize;
+                 height: 6px;
+               }
+               .gutter:hover {
+                 background-color: #b3d4fc;
+               }
+            `} />
+            {/* 顶部用户信息栏 */}
             <UserNavbar />
-            <Container>
-                <EditorContainer>
-                    <EditorHeader>
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '16px',
-                            flex: 1,
-                            minWidth: 0,
-                            marginRight: '32px'
-                        }}>
-                            <BackButton onClick={handleBackToHome}>
-                                <span style={{ fontSize: '16px' }}>←</span>
-                                My Pens
-                            </BackButton>
-                            <EditorTitle
-                                value={title}
-                                onChange={(e) => setTitle(e.target.value)}
-                                placeholder="Untitled"
-                            />
-                        </div>
-                        <EditorActions>
-                            <Select onChange={handleLoadPen} value={currentPen?.id || ''}>
-                                <option value="">📁 New Pen</option>
-                                {userPens.map(pen => (
-                                    <option key={pen.id.toString()} value={pen.id.toString()}>{pen.title}</option>
-                                ))}
-                            </Select>
-                            <Button onClick={handleSave} disabled={isSaving || saveSuccess}>
-                                {isSaving ? '💾 Saving...' : saveSuccess ? '✅ Saved!' : '💾 Save'}
-                            </Button>
-                            <DeleteButton
-                                onClick={handleDelete}
-                                disabled={isDeleting || !currentPen}
-                                style={{
-                                    visibility: currentPen ? 'visible' : 'hidden',
-                                    opacity: currentPen ? 1 : 0,
-                                    transition: 'opacity 0.3s ease, visibility 0.3s ease'
-                                }}
-                            >
-                                {isDeleting ? '🗑️ Deleting...' : '🗑️ Delete'}
-                            </DeleteButton>
-                        </EditorActions>
-                    </EditorHeader>
-                    <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        flex: 1,
-                        minHeight: 0,
-                        overflow: 'hidden'
-                    }}>
-                        {/* HTML Editor */}
-                        <div style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            flex: '1 1 0',
-                            minHeight: 0,
-                            overflow: 'hidden'
-                        }}>
+            {/* 顶部操作栏 */}
+            <EditorHeader>
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    flex: 1,
+                    minWidth: 0,
+                    marginRight: '32px'
+                }}>
+                    <BackButton onClick={handleBackToHome}>
+                        <span style={{ fontSize: '16px' }}>←</span>
+                        My Pens
+                    </BackButton>
+                    <EditorTitle
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="Untitled"
+                    />
+                </div>
+                <EditorActions>
+                    <Select onChange={handleLoadPen} value={currentPen?.id || ''}>
+                        <option value="">📁 New Pen</option>
+                        {userPens.map(pen => (
+                            <option key={pen.id.toString()} value={pen.id.toString()}>{pen.title}</option>
+                        ))}
+                    </Select>
+                    <Button onClick={handleSave} disabled={isSaving || saveSuccess}>
+                        {isSaving ? '💾 Saving...' : saveSuccess ? '✅ Saved!' : '💾 Save'}
+                    </Button>
+                    {currentPen && (
+                        <ShareButton onClick={handleShare}>
+                            🔗 Share
+                        </ShareButton>
+                    )}
+                    <DeleteButton
+                        onClick={handleDelete}
+                        disabled={isDeleting || !currentPen}
+                        style={{
+                            visibility: currentPen ? 'visible' : 'hidden',
+                            opacity: currentPen ? 1 : 0,
+                            transition: 'opacity 0.3s ease, visibility 0.3s ease'
+                        }}
+                    >
+                        {isDeleting ? '🗑️ Deleting...' : '🗑️ Delete'}
+                    </DeleteButton>
+                </EditorActions>
+            </EditorHeader>
+            {/* 主内容区：左右分为编辑区和预览区 */}
+            <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+                <Split
+                    direction="horizontal"
+                    sizes={[50, 50]}
+                    minSize={150}
+                    gutterSize={6}
+                    style={{ display: 'flex', flex: 1, minHeight: 0, height: '100%' }}
+                >
+                    {/* 左侧编辑区（纵向可拖拽） */}
+                    <Split
+                        direction="vertical"
+                        sizes={[33, 33, 34]}
+                        minSize={36}
+                        gutterSize={6}
+                        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+                    >
+                        {/* HTML 编辑器 */}
+                        <div style={{ minHeight: 0, overflow: 'auto' }}>
                             <div style={{
                                 padding: '8px 12px',
+                                height: '32px',
                                 backgroundColor: '#f8f9fa',
                                 borderBottom: '1px solid #e1e4e8',
                                 fontSize: '12px',
@@ -861,23 +1117,13 @@ const Editor: React.FC = () => {
                             }}>
                                 HTML
                             </div>
-                            <div id="html-editor" style={{
-                                flex: 1,
-                                minHeight: 0,
-                                overflow: 'hidden'
-                            }} />
+                            <div id="html-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
-
-                        {/* CSS Editor */}
-                        <div style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            flex: '1 1 0',
-                            minHeight: 0,
-                            overflow: 'hidden'
-                        }}>
+                        {/* CSS 编辑器 */}
+                        <div style={{minHeight: 0, overflow: 'auto' }}>
                             <div style={{
                                 padding: '8px 12px',
+                                height: '32px',
                                 backgroundColor: '#f8f9fa',
                                 borderBottom: '1px solid #e1e4e8',
                                 borderTop: '1px solid #e1e4e8',
@@ -886,27 +1132,28 @@ const Editor: React.FC = () => {
                                 color: '#586069',
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.5px',
-                                flexShrink: 0
+                                flexShrink: 0,
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
                             }}>
-                                CSS
+                                <span>CSS</span>
+                                <LanguageSelect
+                                    value={cssLanguage}
+                                    onChange={(e) => setCssLanguage(e.target.value as 'css' | 'scss' | 'less')}
+                                >
+                                    <option value="css">CSS</option>
+                                    <option value="scss">SCSS</option>
+                                    <option value="less">LESS</option>
+                                </LanguageSelect>
                             </div>
-                            <div id="css-editor" style={{
-                                flex: 1,
-                                minHeight: 0,
-                                overflow: 'hidden'
-                            }} />
+                            <div id="css-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
-
-                        {/* JavaScript Editor */}
-                        <div style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            flex: '1 1 0',
-                            minHeight: 0,
-                            overflow: 'hidden'
-                        }}>
+                        {/* JS 编辑器 */}
+                        <div style={{ minHeight: 0, overflow: 'auto' }}>
                             <div style={{
                                 padding: '8px 12px',
+                                height: '32px',
                                 backgroundColor: '#f8f9fa',
                                 borderBottom: '1px solid #e1e4e8',
                                 borderTop: '1px solid #e1e4e8',
@@ -919,18 +1166,34 @@ const Editor: React.FC = () => {
                             }}>
                                 JavaScript
                             </div>
-                            <div id="js-editor" style={{
-                                flex: 1,
-                                minHeight: 0,
-                                overflow: 'hidden'
-                            }} />
+                            <div id="js-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
-                    </div>
-                </EditorContainer>
-                <PreviewContainer>
-                    <Preview html={htmlCode} css={cssCode} js={jsCode} />
-                </PreviewContainer>
-            </Container>
+                    </Split>
+                    {/* 右侧预览区 */}
+                    <PreviewContainer>
+                        <Preview html={htmlCode} css={compiledCss} js={jsCode} />
+                    </PreviewContainer>
+                </Split>
+            </div>
+
+            {showShareModal && (
+                <>
+                    <Overlay onClick={() => setShowShareModal(false)} />
+                    <ShareModal>
+                        <ShareClose onClick={() => setShowShareModal(false)}>×</ShareClose>
+                        <ShareTitle>分享代码片段</ShareTitle>
+                        <ShareInput
+                            value={shareUrl}
+                            readOnly
+                            onClick={(e) => e.currentTarget.select()}
+                        />
+                        <Button onClick={copyToClipboard}>
+                            📋 复制链接
+                        </Button>
+                    </ShareModal>
+                </>
+            )}
+            {showToast && <Toast>{toastMessage}</Toast>}
         </PageContainer>
     );
 };

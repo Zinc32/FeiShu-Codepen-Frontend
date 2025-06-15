@@ -27,6 +27,7 @@ Collecting workspace information这是一个**飞书代码编辑器前端项目*
 npm install
 ```
 
+<<<<<<< HEAD
 ### 2. 启动开发服务器
 
 ```bash
