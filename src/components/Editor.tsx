@@ -584,6 +584,8 @@ const Editor: React.FC = () => {
     const [jsCode, setJsCode] = useState('console.log("Hello World");'); // Initialize with default JS
     const [cssLanguage, setCssLanguage] = useState<'css' | 'scss' | 'less'>('css');
     const [compiledCss, setCompiledCss] = useState('');
+    const [jsLanguage, setJsLanguage] = useState<'js' | 'ts'>('js');
+    const [compiledJs, setCompiledJs] = useState('');
 
     const fetchUserPens = useCallback(async () => {
         try {
@@ -621,6 +623,10 @@ const Editor: React.FC = () => {
             setHtmlCode(pen.html);
             setCssCode(pen.css);
             setJsCode(pen.js);
+
+            // 加载语言选择（如果保存了的话）
+            if (pen.cssLanguage) setCssLanguage(pen.cssLanguage);
+            if (pen.jsLanguage) setJsLanguage(pen.jsLanguage);
         } catch (error) {
             console.error('Failed to load pen by ID:', error);
             // 如果加载失败，显示默认内容
@@ -756,7 +762,7 @@ const Editor: React.FC = () => {
         }
         if (jsElement) {
             jsElement.innerHTML = '';
-            newJsEditor = createEditor(jsElement, javascript(), setJsEditor, setJsCode, jsCode);
+            newJsEditor = createEditor(jsElement, javascript({ typescript: jsLanguage === 'ts' }), setJsEditor, setJsCode, jsCode);
         }
 
         return () => {
@@ -877,6 +883,59 @@ const Editor: React.FC = () => {
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [hasUnsavedChanges]);
 
+    const compileTypeScript = useCallback(async (code: string): Promise<string> => {
+        try {
+            // 检查是否有 TypeScript 编译器可用
+            if (typeof window !== 'undefined' && (window as any).ts) {
+                const ts = (window as any).ts;
+                const result = ts.transpileModule(code, {
+                    compilerOptions: {
+                        module: ts.ModuleKind.ESNext,
+                        target: ts.ScriptTarget.ES2018,
+                        jsx: ts.JsxEmit.Preserve,
+                        strict: false,
+                        esModuleInterop: true,
+                        allowSyntheticDefaultImports: true,
+                        skipLibCheck: true
+                    }
+                });
+                return result.outputText;
+            }
+            // 如果没有 TypeScript 编译器，返回原始代码
+            return code;
+        } catch (error) {
+            console.error('TypeScript compilation error:', error);
+            return code; // 出错时返回原始代码
+        }
+    }, []);
+
+    useEffect(() => {
+        // 动态加载 TypeScript 编译器
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/typescript/5.3.3/typescript.min.js';
+        script.async = true;
+        script.onload = () => {
+            console.log('TypeScript compiler loaded');
+        };
+        document.head.appendChild(script);
+
+        return () => {
+            // 清理脚本标签
+            const existingScript = document.querySelector('script[src*="typescript"]');
+            if (existingScript) {
+                document.head.removeChild(existingScript);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (jsLanguage === 'ts') {
+            compileTypeScript(jsCode).then(setCompiledJs);
+        } else {
+            setCompiledJs(jsCode);
+        }
+    }, [jsCode, jsLanguage, compileTypeScript]);
+
     const handleSave = async () => {
         if (isSaving) return;
         setIsSaving(true);
@@ -888,7 +947,9 @@ const Editor: React.FC = () => {
                 html: htmlEditor?.state.doc.toString() || '',
                 css: cssEditor?.state.doc.toString() || '',
                 js: jsEditor?.state.doc.toString() || '',
-                isPublic: true
+                isPublic: true,
+                cssLanguage: cssLanguage,
+                jsLanguage: jsLanguage
             };
 
             if (currentPen) {
@@ -1162,16 +1223,26 @@ const Editor: React.FC = () => {
                                 color: '#586069',
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.5px',
-                                flexShrink: 0
+                                flexShrink: 0,
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
                             }}>
-                                JavaScript
+                                <span>JavaScript</span>
+                                <LanguageSelect
+                                    value={jsLanguage}
+                                    onChange={(e) => setJsLanguage(e.target.value as 'js' | 'ts')}
+                                >
+                                    <option value="js">JS</option>
+                                    <option value="ts">TS</option>
+                                </LanguageSelect>
                             </div>
                             <div id="js-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                     </Split>
                     {/* 右侧预览区 */}
                     <PreviewContainer>
-                        <Preview html={htmlCode} css={compiledCss} js={jsCode} />
+                        <Preview html={htmlCode} css={compiledCss} js={compiledJs} />
                     </PreviewContainer>
                 </Split>
             </div>
