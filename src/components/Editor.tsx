@@ -16,6 +16,7 @@ import * as less from 'less';
 import Split from 'react-split';
 import { Global } from '@emotion/react';
 import { useAuth } from '../contexts/AuthContext';
+import { compileReact, compileVue, compileJavaScript, CompilationResult } from '../services/compilerService';
 
 const PageContainer = styled.div`
     display: flex;
@@ -583,7 +584,10 @@ const Editor: React.FC = () => {
     const [cssCode, setCssCode] = useState('body { color: blue; }'); // Initialize with default CSS
     const [jsCode, setJsCode] = useState('console.log("Hello World");'); // Initialize with default JS
     const [cssLanguage, setCssLanguage] = useState<'css' | 'scss' | 'less'>('css');
+    const [jsLanguage, setJsLanguage] = useState<'js' | 'react' | 'vue'>('js');
     const [compiledCss, setCompiledCss] = useState('');
+    const [compiledJs, setCompiledJs] = useState('');
+    const [jsCompilationError, setJsCompilationError] = useState<string>('');
 
     const fetchUserPens = useCallback(async () => {
         try {
@@ -598,14 +602,18 @@ const Editor: React.FC = () => {
         console.log('initializeNewPen called');
         setTitle('Untitled');
         setCurrentPen(null);
-        const defaultHtml = '<div>Hello World</div>';
+        const defaultHtml = '<div id="app">Hello World</div>';
         const defaultCss = 'body { color: blue; }';
-        const defaultJs = 'console.log("Hello World");';
+        const defaultJs = jsLanguage === 'react' 
+            ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
+            : jsLanguage === 'vue'
+            ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
+            : 'console.log("Hello World");';
 
         setHtmlCode(defaultHtml);
         setCssCode(defaultCss);
         setJsCode(defaultJs);
-    }, []);
+    }, [jsLanguage]);
 
     // 加载单个Pen的函数（仿照handleLoadPen的逻辑）
     const loadPenById = useCallback(async (penId: string) => {
@@ -828,6 +836,37 @@ const Editor: React.FC = () => {
         }
     }, []);
 
+    // 编译 JavaScript 框架代码
+    const compileJs = useCallback(async (code: string, language: 'js' | 'react' | 'vue') => {
+        try {
+            let result: CompilationResult;
+            
+            switch (language) {
+                case 'react':
+                    result = compileReact(code);
+                    break;
+                case 'vue':
+                    result = compileVue(code);
+                    break;
+                default:
+                    result = compileJavaScript(code);
+                    break;
+            }
+            
+            if (result.error) {
+                setJsCompilationError(result.error);
+                return code; // Return original code if compilation fails
+            } else {
+                setJsCompilationError('');
+                return result.code;
+            }
+        } catch (error) {
+            console.error(`Error compiling ${language}:`, error);
+            setJsCompilationError(error instanceof Error ? error.message : 'Unknown error');
+            return code;
+        }
+    }, []);
+
     // 当 CSS 代码或语言改变时重新编译
     useEffect(() => {
         if (cssLanguage !== 'css') {
@@ -836,6 +875,11 @@ const Editor: React.FC = () => {
             setCompiledCss(cssCode);
         }
     }, [cssCode, cssLanguage, compileCss]);
+
+    // 当 JS 代码或语言改变时重新编译
+    useEffect(() => {
+        compileJs(jsCode, jsLanguage).then(setCompiledJs);
+    }, [jsCode, jsLanguage, compileJs]);
 
     // 检测内容是否有变化
     const checkForChanges = useCallback(() => {
@@ -1126,7 +1170,7 @@ const Editor: React.FC = () => {
                                 height: '32px',
                                 backgroundColor: '#f8f9fa',
                                 borderBottom: '1px solid #e1e4e8',
-                                borderTop: '1px solid #e1e4e8',
+                                borderTop: '1px solid #e4e4e4',
                                 fontSize: '12px',
                                 fontWeight: '600',
                                 color: '#586069',
@@ -1156,22 +1200,49 @@ const Editor: React.FC = () => {
                                 height: '32px',
                                 backgroundColor: '#f8f9fa',
                                 borderBottom: '1px solid #e1e4e8',
-                                borderTop: '1px solid #e1e4e8',
+                                borderTop: '1px solid #e4e4e4',
                                 fontSize: '12px',
                                 fontWeight: '600',
                                 color: '#586069',
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.5px',
-                                flexShrink: 0
+                                flexShrink: 0,
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
                             }}>
-                                JavaScript
+                                <span>JavaScript</span>
+                                <LanguageSelect
+                                    value={jsLanguage}
+                                    onChange={(e) => setJsLanguage(e.target.value as 'js' | 'react' | 'vue')}
+                                >
+                                    <option value="js">JavaScript</option>
+                                    <option value="react">React</option>
+                                    <option value="vue">Vue</option>
+                                </LanguageSelect>
                             </div>
+                            {jsCompilationError && (
+                                <div style={{
+                                    padding: '8px 12px',
+                                    backgroundColor: '#ffeaea',
+                                    color: '#d73a49',
+                                    fontSize: '12px',
+                                    borderBottom: '1px solid #f97583'
+                                }}>
+                                    Compilation Error: {jsCompilationError}
+                                </div>
+                            )}
                             <div id="js-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                     </Split>
                     {/* 右侧预览区 */}
                     <PreviewContainer>
-                        <Preview html={htmlCode} css={compiledCss} js={jsCode} />
+                        <Preview 
+                            html={htmlCode} 
+                            css={compiledCss} 
+                            js={compiledJs} 
+                            jsLanguage={jsLanguage}
+                        />
                     </PreviewContainer>
                 </Split>
             </div>
@@ -1198,4 +1269,4 @@ const Editor: React.FC = () => {
     );
 };
 
-export default Editor; 
+export default Editor;

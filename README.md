@@ -1,4 +1,4 @@
-Collecting workspace information这是一个**飞书代码编辑器前端项目**，类似于 CodePen 的在线代码编辑器。让我为你详细介绍：
+Collecting workspace information 这是一个**飞书代码编辑器前端项目**，类似于 CodePen 的在线代码编辑器。让我为你详细介绍：
 
 ## 项目概述
 
@@ -27,7 +27,6 @@ Collecting workspace information这是一个**飞书代码编辑器前端项目*
 npm install
 ```
 
-<<<<<<< HEAD
 ### 2. 启动开发服务器
 
 ```bash
@@ -41,6 +40,7 @@ npm start
 ## 主要功能模块
 
 ### 页面路由
+
 - `/login` - 登录页面 (src/pages/LoginPage.tsx)
 - `/register` - 注册页面 (src/pages/RegisterPage.tsx)
 - `/pens` - 代码片段列表页 (src/pages/PensPage.tsx)
@@ -48,11 +48,13 @@ npm start
 - `/editor/:id` - 编辑特定代码片段
 
 ### 核心组件
+
 - `Editor` - 主编辑器组件，集成了 CodeMirror
 - `Preview` - 实时预览组件
 - `UserNavbar` - 用户导航栏
 
 ### 服务层
+
 - `authService` - 用户认证服务
 - `penService` - 代码片段 CRUD 操作
 - `api` - HTTP 请求配置
@@ -60,6 +62,7 @@ npm start
 ## 后端依赖
 
 项目需要后端 API 服务，配置在 .env 中：
+
 ```
 REACT_APP_API_URL=http://localhost:3000/api
 ```
