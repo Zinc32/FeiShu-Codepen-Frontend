@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import Editor from './components/Editor';
 import PensPage from './pages/PensPage';
+import PreviewPage from './pages/PreviewPage';
 import { useAuth, AuthProvider } from './contexts/AuthContext';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -16,6 +17,7 @@ const AppRoutes: React.FC = () => {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/p/:id" element={<PreviewPage />} />
       <Route
         path="/pens"
         element={

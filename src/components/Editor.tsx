@@ -15,6 +15,7 @@ import * as sass from 'sass';
 import * as less from 'less';
 import Split from 'react-split';
 import { Global } from '@emotion/react';
+import { useAuth } from '../contexts/AuthContext';
 
 const PageContainer = styled.div`
     display: flex;
@@ -303,22 +304,8 @@ const EditorTitle = styled.input`
 
 const EditorActions = styled.div`
     display: flex;
+    gap: 12px;
     align-items: center;
-    gap: 14px;
-    min-width: 380px;
-    justify-content: flex-end;
-    flex-shrink: 0;
-    
-    @media (max-width: 1024px) {
-        min-width: 340px;
-        gap: 12px;
-    }
-    
-    @media (max-width: 768px) {
-        gap: 10px;
-        min-width: auto;
-        flex-wrap: wrap;
-    }
 `;
 
 const Button = styled.button`
@@ -493,8 +480,88 @@ const LanguageSelect = styled.select`
     }
 `;
 
+const ShareButton = styled(Button)`
+    background-color: #4CAF50;
+    &:hover {
+        background-color: #45a049;
+    }
+`;
+
+const ShareModal = styled.div`
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    min-width: 400px;
+`;
+
+const ShareInput = styled.input`
+    width: 100%;
+    padding: 8px;
+    margin: 8px 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+`;
+
+const ShareTitle = styled.h3`
+    margin: 0 0 16px 0;
+    color: #333;
+`;
+
+const ShareClose = styled.button`
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #666;
+    &:hover {
+        color: #333;
+    }
+`;
+
+const Overlay = styled.div`
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+`;
+
+const Toast = styled.div`
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 4px;
+    font-size: 14px;
+    z-index: 1000;
+    animation: fadeInOut 2s ease-in-out;
+
+    @keyframes fadeInOut {
+        0% { opacity: 0; }
+        15% { opacity: 1; }
+        85% { opacity: 1; }
+        100% { opacity: 0; }
+    }
+`;
+
 const Editor: React.FC = () => {
     const navigate = useNavigate();
+    const { isAuthenticated } = useAuth();
     const params = useParams();
     const [htmlEditor, setHtmlEditor] = useState<EditorView | null>(null);
     const [cssEditor, setCssEditor] = useState<EditorView | null>(null);
@@ -506,6 +573,10 @@ const Editor: React.FC = () => {
     const [isDeleting, setIsDeleting] = useState(false);
     const [userPens, setUserPens] = useState<Pen[]>([]);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [shareUrl, setShareUrl] = useState('');
+    const [showToast, setShowToast] = useState(false);
+    const [toastMessage, setToastMessage] = useState('');
 
     // State to hold the content for the preview
     const [htmlCode, setHtmlCode] = useState('<div>Hello World</div>'); // Initialize with default HTML
@@ -558,8 +629,12 @@ const Editor: React.FC = () => {
     }, [initializeNewPen]);
 
     useEffect(() => {
+        if (!isAuthenticated) {
+            navigate('/login');
+            return;
+        }
         fetchUserPens();
-    }, [fetchUserPens]);
+    }, [isAuthenticated, navigate, fetchUserPens]);
 
     // 处理URL参数，加载对应的Pen
     useEffect(() => {
@@ -921,6 +996,23 @@ const Editor: React.FC = () => {
         }
     };
 
+    const handleShare = () => {
+        if (!currentPen) return;
+        const url = `${window.location.origin}/p/${currentPen.id}`;
+        setShareUrl(url);
+        setShowShareModal(true);
+    };
+
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(shareUrl);
+        setToastMessage('链接已复制到剪贴板！');
+        setShowToast(true);
+        setShowShareModal(false);
+        setTimeout(() => {
+            setShowToast(false);
+        }, 2000);
+    };
+
     return (
         <PageContainer style={{ height: '100vh', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <Global styles={`
@@ -974,6 +1066,11 @@ const Editor: React.FC = () => {
                     <Button onClick={handleSave} disabled={isSaving || saveSuccess}>
                         {isSaving ? '💾 Saving...' : saveSuccess ? '✅ Saved!' : '💾 Save'}
                     </Button>
+                    {currentPen && (
+                        <ShareButton onClick={handleShare}>
+                            🔗 Share
+                        </ShareButton>
+                    )}
                     <DeleteButton
                         onClick={handleDelete}
                         disabled={isDeleting || !currentPen}
@@ -1078,6 +1175,25 @@ const Editor: React.FC = () => {
                     </PreviewContainer>
                 </Split>
             </div>
+
+            {showShareModal && (
+                <>
+                    <Overlay onClick={() => setShowShareModal(false)} />
+                    <ShareModal>
+                        <ShareClose onClick={() => setShowShareModal(false)}>×</ShareClose>
+                        <ShareTitle>分享代码片段</ShareTitle>
+                        <ShareInput
+                            value={shareUrl}
+                            readOnly
+                            onClick={(e) => e.currentTarget.select()}
+                        />
+                        <Button onClick={copyToClipboard}>
+                            📋 复制链接
+                        </Button>
+                    </ShareModal>
+                </>
+            )}
+            {showToast && <Toast>{toastMessage}</Toast>}
         </PageContainer>
     );
 };
