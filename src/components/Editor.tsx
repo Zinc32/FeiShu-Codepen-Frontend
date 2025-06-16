@@ -584,7 +584,7 @@ const Editor: React.FC = () => {
     const [cssCode, setCssCode] = useState('body { color: blue; }'); // Initialize with default CSS
     const [jsCode, setJsCode] = useState('console.log("Hello World");'); // Initialize with default JS
     const [cssLanguage, setCssLanguage] = useState<'css' | 'scss' | 'less'>('css');
-    const [jsLanguage, setJsLanguage] = useState<'js' | 'react' | 'vue'>('js');
+    const [jsLanguage, setJsLanguage] = useState<'js' | 'react' | 'vue' | 'ts'>('js');
     const [compiledCss, setCompiledCss] = useState('');
     const [compiledJs, setCompiledJs] = useState('');
     const [jsCompilationError, setJsCompilationError] = useState<string>('');
@@ -629,6 +629,10 @@ const Editor: React.FC = () => {
             setHtmlCode(pen.html);
             setCssCode(pen.css);
             setJsCode(pen.js);
+
+            // 加载语言选择（如果保存了的话）
+            if (pen.cssLanguage) setCssLanguage(pen.cssLanguage);
+            if (pen.jsLanguage) setJsLanguage(pen.jsLanguage);
         } catch (error) {
             console.error('Failed to load pen by ID:', error);
             // 如果加载失败，显示默认内容
@@ -764,7 +768,7 @@ const Editor: React.FC = () => {
         }
         if (jsElement) {
             jsElement.innerHTML = '';
-            newJsEditor = createEditor(jsElement, javascript(), setJsEditor, setJsCode, jsCode);
+            newJsEditor = createEditor(jsElement, javascript({ typescript: jsLanguage === 'ts' }), setJsEditor, setJsCode, jsCode);
         }
 
         return () => {
@@ -837,7 +841,7 @@ const Editor: React.FC = () => {
     }, []);
 
     // 编译 JavaScript 框架代码
-    const compileJs = useCallback(async (code: string, language: 'js' | 'react' | 'vue') => {
+    const compileJs = useCallback(async (code: string, language: 'js' | 'react' | 'vue' | 'ts') => {
         try {
             let result: CompilationResult;
             
@@ -921,6 +925,59 @@ const Editor: React.FC = () => {
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [hasUnsavedChanges]);
 
+    const compileTypeScript = useCallback(async (code: string): Promise<string> => {
+        try {
+            // 检查是否有 TypeScript 编译器可用
+            if (typeof window !== 'undefined' && (window as any).ts) {
+                const ts = (window as any).ts;
+                const result = ts.transpileModule(code, {
+                    compilerOptions: {
+                        module: ts.ModuleKind.ESNext,
+                        target: ts.ScriptTarget.ES2018,
+                        jsx: ts.JsxEmit.Preserve,
+                        strict: false,
+                        esModuleInterop: true,
+                        allowSyntheticDefaultImports: true,
+                        skipLibCheck: true
+                    }
+                });
+                return result.outputText;
+            }
+            // 如果没有 TypeScript 编译器，返回原始代码
+            return code;
+        } catch (error) {
+            console.error('TypeScript compilation error:', error);
+            return code; // 出错时返回原始代码
+        }
+    }, []);
+
+    useEffect(() => {
+        // 动态加载 TypeScript 编译器
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/typescript/5.3.3/typescript.min.js';
+        script.async = true;
+        script.onload = () => {
+            console.log('TypeScript compiler loaded');
+        };
+        document.head.appendChild(script);
+
+        return () => {
+            // 清理脚本标签
+            const existingScript = document.querySelector('script[src*="typescript"]');
+            if (existingScript) {
+                document.head.removeChild(existingScript);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (jsLanguage === 'ts') {
+            compileTypeScript(jsCode).then(setCompiledJs);
+        } else {
+            setCompiledJs(jsCode);
+        }
+    }, [jsCode, jsLanguage, compileTypeScript]);
+
     const handleSave = async () => {
         if (isSaving) return;
         setIsSaving(true);
@@ -932,7 +989,9 @@ const Editor: React.FC = () => {
                 html: htmlEditor?.state.doc.toString() || '',
                 css: cssEditor?.state.doc.toString() || '',
                 js: jsEditor?.state.doc.toString() || '',
-                isPublic: true
+                isPublic: true,
+                cssLanguage: cssLanguage,
+                jsLanguage: jsLanguage
             };
 
             if (currentPen) {
@@ -1146,7 +1205,7 @@ const Editor: React.FC = () => {
                         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
                     >
                         {/* HTML 编辑器 */}
-                        <div style={{ minHeight: 0, overflow: 'auto' }}>
+                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -1157,14 +1216,17 @@ const Editor: React.FC = () => {
                                 color: '#586069',
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.5px',
-                                flexShrink: 0
+                                flexShrink: 0,
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 10
                             }}>
                                 HTML
                             </div>
                             <div id="html-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* CSS 编辑器 */}
-                        <div style={{minHeight: 0, overflow: 'auto' }}>
+                        <div style={{minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -1179,7 +1241,10 @@ const Editor: React.FC = () => {
                                 flexShrink: 0,
                                 display: 'flex',
                                 justifyContent: 'space-between',
-                                alignItems: 'center'
+                                alignItems: 'center',
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 10
                             }}>
                                 <span>CSS</span>
                                 <LanguageSelect
@@ -1194,7 +1259,7 @@ const Editor: React.FC = () => {
                             <div id="css-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* JS 编辑器 */}
-                        <div style={{ minHeight: 0, overflow: 'auto' }}>
+                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -1209,16 +1274,20 @@ const Editor: React.FC = () => {
                                 flexShrink: 0,
                                 display: 'flex',
                                 justifyContent: 'space-between',
-                                alignItems: 'center'
+                                alignItems: 'center',
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 10
                             }}>
                                 <span>JavaScript</span>
                                 <LanguageSelect
                                     value={jsLanguage}
-                                    onChange={(e) => setJsLanguage(e.target.value as 'js' | 'react' | 'vue')}
+                                    onChange={(e) => setJsLanguage(e.target.value as 'js' | 'react' | 'vue' | 'ts')}
                                 >
                                     <option value="js">JavaScript</option>
                                     <option value="react">React</option>
                                     <option value="vue">Vue</option>
+                                    <option value="ts">TS</option>
                                 </LanguageSelect>
                             </div>
                             {jsCompilationError && (

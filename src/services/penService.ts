@@ -7,6 +7,8 @@ export interface PenData {
     css: string;
     js: string;
     isPublic?: boolean;
+    cssLanguage?: "css" | "scss" | "less";
+    jsLanguage?: "js" | "ts" | "vue" | "react";
 }
 
 export interface Pen {

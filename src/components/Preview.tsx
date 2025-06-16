@@ -12,7 +12,7 @@ interface PreviewProps {
   html: string;
   css: string;
   js: string;
-  jsLanguage?: 'js' | 'react' | 'vue';
+  jsLanguage?: 'js' | 'react' | 'vue' | 'ts';
 }
 
 const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) => {
