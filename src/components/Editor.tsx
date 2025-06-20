@@ -495,77 +495,33 @@ const LanguageSelect = styled.select`
         padding: 8px;
     }
 `;
-
-const ErrorIndicator = styled.div<{ hasErrors: boolean; errorCount: number }>`
-    display: ${props => props.hasErrors ? 'flex' : 'none'};
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: linear-gradient(135deg, #ff4757 0%, #ff3742 100%);
-    color: white;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    
-    &:hover {
-        background: linear-gradient(135deg, #ff3742 0%, #ff2633 100%);
-        transform: translateY(-1px);
-    }
-    
-    &::before {
-        content: '⚠️';
-        font-size: 14px;
-    }
-`;
-
-const CheckErrorsButton = styled.button<{ isChecking: boolean }>`
-    padding: 8px 16px;
-    background: linear-gradient(135deg, #007acc 0%, #005a9e 100%);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 14px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    min-width: 100px;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    
-    &:hover:not(:disabled) {
-        background: linear-gradient(135deg, #005a9e 0%, #004577 100%);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-    }
-    
-    &:disabled {
-        background: #6c757d;
-        cursor: not-allowed;
-        transform: none;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-    
-    ${props => props.isChecking && `
-        &::before {
-            content: '🔄';
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-    `}
-`;
+import { useAuth } from '../contexts/AuthContext';
+import { compileReact, compileVue, compileJavaScript, CompilationResult } from '../services/compilerService';
+import {
+    PageContainer,
+    Container,
+    EditorContainer,
+    PreviewContainer,
+    EditorHeader,
+    EditorTitle,
+    EditorActions,
+    Button,
+    BackButton,
+    Select,
+    DeleteButton,
+    LanguageSelect,
+    ShareButton,
+    ShareModal,
+    ShareInput,
+    ShareTitle,
+    ShareClose,
+    Overlay,
+    Toast
+} from '../styles/editorStyles';
 
 const Editor: React.FC = () => {
     const navigate = useNavigate();
+    const { isAuthenticated } = useAuth();
     const params = useParams();
     const [htmlEditor, setHtmlEditor] = useState<EditorView | null>(null);
     const [cssEditor, setCssEditor] = useState<EditorView | null>(null);
@@ -577,13 +533,20 @@ const Editor: React.FC = () => {
     const [isDeleting, setIsDeleting] = useState(false);
     const [userPens, setUserPens] = useState<Pen[]>([]);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [shareUrl, setShareUrl] = useState('');
+    const [showToast, setShowToast] = useState(false);
+    const [toastMessage, setToastMessage] = useState('');
 
     // State to hold the content for the preview
     const [htmlCode, setHtmlCode] = useState('<div>Hello World</div>'); // Initialize with default HTML
     const [cssCode, setCssCode] = useState('body { color: blue; }'); // Initialize with default CSS
     const [jsCode, setJsCode] = useState('console.log("Hello World");'); // Initialize with default JS
     const [cssLanguage, setCssLanguage] = useState<'css' | 'scss' | 'less'>('css');
+    const [jsLanguage, setJsLanguage] = useState<'js' | 'react' | 'vue' | 'ts'>('js');
     const [compiledCss, setCompiledCss] = useState('');
+    const [compiledJs, setCompiledJs] = useState('');
+    const [jsCompilationError, setJsCompilationError] = useState<string>('');
 
     // 错误处理
     const editorErrors = useEditorErrors({
@@ -609,14 +572,18 @@ const Editor: React.FC = () => {
         console.log('initializeNewPen called');
         setTitle('Untitled');
         setCurrentPen(null);
-        const defaultHtml = '<div>Hello World</div>';
+        const defaultHtml = '<div id="app">Hello World</div>';
         const defaultCss = 'body { color: blue; }';
-        const defaultJs = 'console.log("Hello World");';
+        const defaultJs = jsLanguage === 'react'
+            ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
+            : jsLanguage === 'vue'
+            ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
+            : 'console.log("Hello World");';
 
         setHtmlCode(defaultHtml);
         setCssCode(defaultCss);
         setJsCode(defaultJs);
-    }, []);
+    }, [jsLanguage]);
 
     // 加载单个Pen的函数（仿照handleLoadPen的逻辑）
     const loadPenById = useCallback(async (penId: string) => {
@@ -632,6 +599,12 @@ const Editor: React.FC = () => {
             setHtmlCode(pen.html);
             setCssCode(pen.css);
             setJsCode(pen.js);
+
+            // 加载语言选择（如果保存了的话）
+            if (pen.cssLanguage) setCssLanguage(pen.cssLanguage);
+            if (pen.jsLanguage) setJsLanguage(pen.jsLanguage);
+            // console.log(pen.cssLanguage)
+            // console.log(pen.jsLanguage)
         } catch (error) {
             console.error('Failed to load pen by ID:', error);
             // 如果加载失败，显示默认内容
@@ -640,8 +613,12 @@ const Editor: React.FC = () => {
     }, [initializeNewPen]);
 
     useEffect(() => {
+        if (!isAuthenticated) {
+            navigate('/login');
+            return;
+        }
         fetchUserPens();
-    }, [fetchUserPens]);
+    }, [isAuthenticated, navigate, fetchUserPens]);
 
     // 处理URL参数，加载对应的Pen
     useEffect(() => {
@@ -765,7 +742,7 @@ const Editor: React.FC = () => {
         }
         if (jsElement) {
             jsElement.innerHTML = '';
-            newJsEditor = createEditor(jsElement, javascript(), setJsEditor, setJsCode, jsCode);
+            newJsEditor = createEditor(jsElement, javascript({ typescript: jsLanguage === 'ts' }), setJsEditor, setJsCode, jsCode);
         }
 
         return () => {
@@ -837,6 +814,37 @@ const Editor: React.FC = () => {
         }
     }, []);
 
+    // 编译 JavaScript 框架代码
+    const compileJs = useCallback(async (code: string, language: 'js' | 'react' | 'vue' | 'ts') => {
+        try {
+            let result: CompilationResult;
+
+            switch (language) {
+                case 'react':
+                    result = compileReact(code);
+                    break;
+                case 'vue':
+                    result = compileVue(code);
+                    break;
+                default:
+                    result = compileJavaScript(code);
+                    break;
+            }
+
+            if (result.error) {
+                setJsCompilationError(result.error);
+                return code; // Return original code if compilation fails
+            } else {
+                setJsCompilationError('');
+                return result.code;
+            }
+        } catch (error) {
+            console.error(`Error compiling ${language}:`, error);
+            setJsCompilationError(error instanceof Error ? error.message : 'Unknown error');
+            return code;
+        }
+    }, []);
+
     // 当 CSS 代码或语言改变时重新编译
     useEffect(() => {
         if (cssLanguage !== 'css') {
@@ -845,6 +853,11 @@ const Editor: React.FC = () => {
             setCompiledCss(cssCode);
         }
     }, [cssCode, cssLanguage, compileCss]);
+
+    // 当 JS 代码或语言改变时重新编译
+    useEffect(() => {
+        compileJs(jsCode, jsLanguage).then(setCompiledJs);
+    }, [jsCode, jsLanguage, compileJs]);
 
     // 检测内容是否有变化
     const checkForChanges = useCallback(() => {
@@ -886,6 +899,59 @@ const Editor: React.FC = () => {
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [hasUnsavedChanges]);
 
+    const compileTypeScript = useCallback(async (code: string): Promise<string> => {
+        try {
+            // 检查是否有 TypeScript 编译器可用
+            if (typeof window !== 'undefined' && (window as any).ts) {
+                const ts = (window as any).ts;
+                const result = ts.transpileModule(code, {
+                    compilerOptions: {
+                        module: ts.ModuleKind.ESNext,
+                        target: ts.ScriptTarget.ES2018,
+                        jsx: ts.JsxEmit.Preserve,
+                        strict: false,
+                        esModuleInterop: true,
+                        allowSyntheticDefaultImports: true,
+                        skipLibCheck: true
+                    }
+                });
+                return result.outputText;
+            }
+            // 如果没有 TypeScript 编译器，返回原始代码
+            return code;
+        } catch (error) {
+            console.error('TypeScript compilation error:', error);
+            return code; // 出错时返回原始代码
+        }
+    }, []);
+
+    useEffect(() => {
+        // 动态加载 TypeScript 编译器
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/typescript/5.3.3/typescript.min.js';
+        script.async = true;
+        script.onload = () => {
+            console.log('TypeScript compiler loaded');
+        };
+        document.head.appendChild(script);
+
+        return () => {
+            // 清理脚本标签
+            const existingScript = document.querySelector('script[src*="typescript"]');
+            if (existingScript) {
+                document.head.removeChild(existingScript);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (jsLanguage === 'ts') {
+            compileTypeScript(jsCode).then(setCompiledJs);
+        } else {
+            setCompiledJs(jsCode);
+        }
+    }, [jsCode, jsLanguage, compileTypeScript]);
+
     const handleSave = async () => {
         if (isSaving) return;
         setIsSaving(true);
@@ -897,7 +963,9 @@ const Editor: React.FC = () => {
                 html: htmlEditor?.state.doc.toString() || '',
                 css: cssEditor?.state.doc.toString() || '',
                 js: jsEditor?.state.doc.toString() || '',
-                isPublic: true
+                isPublic: true,
+                cssLanguage: cssLanguage,
+                jsLanguage: jsLanguage
             };
 
             if (currentPen) {
@@ -1005,6 +1073,23 @@ const Editor: React.FC = () => {
         }
     };
 
+    const handleShare = () => {
+        if (!currentPen) return;
+        const url = `${window.location.origin}/p/${currentPen.id}`;
+        setShareUrl(url);
+        setShowShareModal(true);
+    };
+
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(shareUrl);
+        setToastMessage('链接已复制到剪贴板！');
+        setShowToast(true);
+        setShowShareModal(false);
+        setTimeout(() => {
+            setShowToast(false);
+        }, 2000);
+    };
+
     return (
         <PageContainer style={{ height: '100vh', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <Global styles={`
@@ -1050,7 +1135,7 @@ const Editor: React.FC = () => {
                 </div>
                 <EditorActions>
                     {/* 错误指示器 */}
-                    <ErrorIndicator 
+                    <ErrorIndicator
                         hasErrors={editorErrors.getTotalErrorCount() > 0}
                         errorCount={editorErrors.getTotalErrorCount()}
                         onClick={editorErrors.toggleErrorPanel}
@@ -1066,6 +1151,11 @@ const Editor: React.FC = () => {
                     <Button onClick={handleSave} disabled={isSaving || saveSuccess}>
                         {isSaving ? '💾 Saving...' : saveSuccess ? '✅ Saved!' : '💾 Save'}
                     </Button>
+                    {currentPen && (
+                        <ShareButton onClick={handleShare}>
+                            🔗 Share
+                        </ShareButton>
+                    )}
                     <DeleteButton
                         onClick={handleDelete}
                         disabled={isDeleting || !currentPen}
@@ -1088,7 +1178,6 @@ const Editor: React.FC = () => {
                     gutterSize={6}
                     style={{ display: 'flex', flex: 1, minHeight: 0, height: '100%' }}
                 >
-                    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                     {/* 左侧编辑区（纵向可拖拽） */}
                     <Split
                         direction="vertical"
@@ -1098,7 +1187,7 @@ const Editor: React.FC = () => {
                         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
                     >
                         {/* HTML 编辑器 */}
-                        <div style={{ minHeight: 0, overflow: 'auto' }}>
+                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -1119,13 +1208,13 @@ const Editor: React.FC = () => {
                             <div id="html-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* CSS 编辑器 */}
-                        <div style={{ minHeight: 0, overflow: 'auto' }}>
+                        <div style={{minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
                                 backgroundColor: '#f8f9fa',
                                 borderBottom: '1px solid #e1e4e8',
-                                borderTop: '1px solid #e1e4e8',
+                                borderTop: '1px solid #e4e4e4',
                                 fontSize: '12px',
                                 fontWeight: '600',
                                 color: '#586069',
@@ -1152,34 +1241,57 @@ const Editor: React.FC = () => {
                             <div id="css-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* JS 编辑器 */}
-                        <div style={{ minHeight: 0, overflow: 'auto' }}>
+                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
                                 backgroundColor: '#f8f9fa',
                                 borderBottom: '1px solid #e1e4e8',
-                                borderTop: '1px solid #e1e4e8',
+                                borderTop: '1px solid #e4e4e4',
                                 fontSize: '12px',
                                 fontWeight: '600',
                                 color: '#586069',
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.5px',
                                 flexShrink: 0,
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
                                 position: 'sticky',
                                 top: 0,
                                 zIndex: 10
                             }}>
-                                JavaScript
+                                <span>JavaScript</span>
+                                <LanguageSelect
+                                    value={jsLanguage}
+                                    onChange={(e) => setJsLanguage(e.target.value as 'js' | 'react' | 'vue' | 'ts')}
+                                >
+                                    <option value="js">JavaScript</option>
+                                    <option value="react">React</option>
+                                    <option value="vue">Vue</option>
+                                    <option value="ts">TS</option>
+                                </LanguageSelect>
                             </div>
+                            {jsCompilationError && (
+                                <div style={{
+                                    padding: '8px 12px',
+                                    backgroundColor: '#ffeaea',
+                                    color: '#d73a49',
+                                    fontSize: '12px',
+                                    borderBottom: '1px solid #f97583'
+                                }}>
+                                    Compilation Error: {jsCompilationError}
+                                </div>
+                            )}
                             <div id="js-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
-                        
+
                         {/* 错误面板 - 始终渲染但控制显示状态 */}
-                        <div style={{ 
-                            minHeight: 0, 
-                            overflow: 'hidden', 
+                        <div style={{
+                            minHeight: 0,
+                            overflow: 'hidden',
                             display: editorErrors.showErrorPanel ? 'flex' : 'none',
-                            flexDirection: 'column' 
+                            flexDirection: 'column'
                         }}>
                             <ErrorPanel
                                 htmlErrors={editorErrors.errors.htmlErrors}
@@ -1190,13 +1302,36 @@ const Editor: React.FC = () => {
                             />
                         </div>
                     </Split>
-                    </div>
                     {/* 右侧预览区 */}
                     <PreviewContainer>
-                        <Preview html={htmlCode} css={compiledCss} js={jsCode} />
+                        <Preview
+                            html={htmlCode}
+                            css={compiledCss}
+                            js={compiledJs}
+                            jsLanguage={jsLanguage}
+                        />
                     </PreviewContainer>
                 </Split>
             </div>
+
+            {showShareModal && (
+                <>
+                    <Overlay onClick={() => setShowShareModal(false)} />
+                    <ShareModal>
+                        <ShareClose onClick={() => setShowShareModal(false)}>×</ShareClose>
+                        <ShareTitle>分享代码片段</ShareTitle>
+                        <ShareInput
+                            value={shareUrl}
+                            readOnly
+                            onClick={(e) => e.currentTarget.select()}
+                        />
+                        <Button onClick={copyToClipboard}>
+                            📋 复制链接
+                        </Button>
+                    </ShareModal>
+                </>
+            )}
+            {showToast && <Toast>{toastMessage}</Toast>}
         </PageContainer>
     );
 };

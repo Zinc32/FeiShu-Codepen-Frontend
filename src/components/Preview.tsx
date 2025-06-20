@@ -3,18 +3,19 @@ import styled from '@emotion/styled';
 
 const PreviewContainer = styled.div`
   height: 100%;
-  overflow: auto;
+  width: 100%;
+  overflow: hidden;
   background: white;
-  padding: 20px;
 `;
 
 interface PreviewProps {
   html: string;
   css: string;
   js: string;
+  jsLanguage?: 'js' | 'react' | 'vue' | 'ts';
 }
 
-const Preview: React.FC<PreviewProps> = ({ html, css, js }) => {
+const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
@@ -25,12 +26,35 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js }) => {
     if (!doc) return;
 
     try {
+      let libraryScripts = '';
+
+      // Add library scripts based on the selected language
+      if (jsLanguage === 'react') {
+        libraryScripts = `
+          <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+          <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+        `;
+      } else if (jsLanguage === 'vue') {
+        libraryScripts = `
+          <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+        `;
+      }
+
       const content = `
         <!DOCTYPE html>
         <html>
           <head>
             <meta charset="UTF-8">
-            <style>${css}</style>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+              body {
+                margin: 0;
+                padding: 0;
+                overflow-x: hidden;
+              }
+              ${css}
+            </style>
+            ${libraryScripts}
           </head>
           <body>
             ${html}
@@ -39,6 +63,7 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js }) => {
                 ${js}
               } catch (error) {
                 console.error('Preview script error:', error);
+                document.body.innerHTML += '<div style="color: red; padding: 20px; font-family: monospace;">Error: ' + error.message + '</div>';
               }
             </script>
           </body>
@@ -51,7 +76,7 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js }) => {
     } catch (error) {
       console.error('Preview rendering error:', error);
     }
-  }, [html, css, js]);
+  }, [html, css, js, jsLanguage]);
 
   return (
     <PreviewContainer>
@@ -65,4 +90,4 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js }) => {
   );
 };
 
-export default Preview; 
+export default Preview;
