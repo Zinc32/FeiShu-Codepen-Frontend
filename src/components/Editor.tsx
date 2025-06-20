@@ -15,6 +15,9 @@ import * as sass from 'sass';
 import * as less from 'less';
 import Split from 'react-split';
 import { Global } from '@emotion/react';
+import ErrorPanel from './ErrorPanel';
+import { useEditorErrors } from '../hooks/useEditorErrors';
+import { createErrorHighlightExtension } from '../utils/editorErrorHighlight';
 
 const PageContainer = styled.div`
     display: flex;
@@ -493,6 +496,74 @@ const LanguageSelect = styled.select`
     }
 `;
 
+const ErrorIndicator = styled.div<{ hasErrors: boolean; errorCount: number }>`
+    display: ${props => props.hasErrors ? 'flex' : 'none'};
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: linear-gradient(135deg, #ff4757 0%, #ff3742 100%);
+    color: white;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    
+    &:hover {
+        background: linear-gradient(135deg, #ff3742 0%, #ff2633 100%);
+        transform: translateY(-1px);
+    }
+    
+    &::before {
+        content: '⚠️';
+        font-size: 14px;
+    }
+`;
+
+const CheckErrorsButton = styled.button<{ isChecking: boolean }>`
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #007acc 0%, #005a9e 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    min-width: 100px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    
+    &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #005a9e 0%, #004577 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+    
+    &:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    ${props => props.isChecking && `
+        &::before {
+            content: '🔄';
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    `}
+`;
+
 const Editor: React.FC = () => {
     const navigate = useNavigate();
     const params = useParams();
@@ -513,6 +584,17 @@ const Editor: React.FC = () => {
     const [jsCode, setJsCode] = useState('console.log("Hello World");'); // Initialize with default JS
     const [cssLanguage, setCssLanguage] = useState<'css' | 'scss' | 'less'>('css');
     const [compiledCss, setCompiledCss] = useState('');
+
+    // 错误处理
+    const editorErrors = useEditorErrors({
+        htmlCode,
+        cssCode,
+        jsCode,
+        cssLanguage,
+        htmlEditor,
+        cssEditor,
+        jsEditor
+    });
 
     const fetchUserPens = useCallback(async () => {
         try {
@@ -601,6 +683,8 @@ const Editor: React.FC = () => {
             ]),
             history(),
             syntaxHighlighting(defaultHighlightStyle),
+            // 添加错误高亮扩展
+            ...createErrorHighlightExtension(),
             // 确保选择功能正常工作和字体优化
             EditorView.theme({
                 '&.cm-focused .cm-selectionBackground': {
@@ -965,6 +1049,14 @@ const Editor: React.FC = () => {
                     />
                 </div>
                 <EditorActions>
+                    {/* 错误指示器 */}
+                    <ErrorIndicator 
+                        hasErrors={editorErrors.getTotalErrorCount() > 0}
+                        errorCount={editorErrors.getTotalErrorCount()}
+                        onClick={editorErrors.toggleErrorPanel}
+                    >
+                        {editorErrors.getTotalErrorCount()} 错误
+                    </ErrorIndicator>
                     <Select onChange={handleLoadPen} value={currentPen?.id || ''}>
                         <option value="">📁 New Pen</option>
                         {userPens.map(pen => (
@@ -988,7 +1080,7 @@ const Editor: React.FC = () => {
                 </EditorActions>
             </EditorHeader>
             {/* 主内容区：左右分为编辑区和预览区 */}
-            <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                 <Split
                     direction="horizontal"
                     sizes={[50, 50]}
@@ -996,16 +1088,17 @@ const Editor: React.FC = () => {
                     gutterSize={6}
                     style={{ display: 'flex', flex: 1, minHeight: 0, height: '100%' }}
                 >
+                    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                     {/* 左侧编辑区（纵向可拖拽） */}
                     <Split
                         direction="vertical"
-                        sizes={[33, 33, 34]}
+                        sizes={editorErrors.showErrorPanel ? [28, 28, 28, 16] : [33, 33, 34, 0]}
                         minSize={36}
                         gutterSize={6}
                         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
                     >
                         {/* HTML 编辑器 */}
-                        <div style={{ minHeight: 0, overflow: 'auto' }}>
+                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -1016,14 +1109,17 @@ const Editor: React.FC = () => {
                                 color: '#586069',
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.5px',
-                                flexShrink: 0
+                                flexShrink: 0,
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 10
                             }}>
                                 HTML
                             </div>
                             <div id="html-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* CSS 编辑器 */}
-                        <div style={{minHeight: 0, overflow: 'auto' }}>
+                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -1038,7 +1134,10 @@ const Editor: React.FC = () => {
                                 flexShrink: 0,
                                 display: 'flex',
                                 justifyContent: 'space-between',
-                                alignItems: 'center'
+                                alignItems: 'center',
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 10
                             }}>
                                 <span>CSS</span>
                                 <LanguageSelect
@@ -1053,7 +1152,7 @@ const Editor: React.FC = () => {
                             <div id="css-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* JS 编辑器 */}
-                        <div style={{ minHeight: 0, overflow: 'auto' }}>
+                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -1065,13 +1164,33 @@ const Editor: React.FC = () => {
                                 color: '#586069',
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.5px',
-                                flexShrink: 0
+                                flexShrink: 0,
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 10
                             }}>
                                 JavaScript
                             </div>
                             <div id="js-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
+                        
+                        {/* 错误面板 - 始终渲染但控制显示状态 */}
+                        <div style={{ 
+                            minHeight: 0, 
+                            overflow: 'hidden', 
+                            display: editorErrors.showErrorPanel ? 'flex' : 'none',
+                            flexDirection: 'column' 
+                        }}>
+                            <ErrorPanel
+                                htmlErrors={editorErrors.errors.htmlErrors}
+                                cssErrors={editorErrors.errors.cssErrors}
+                                jsErrors={editorErrors.errors.jsErrors}
+                                onErrorClick={editorErrors.jumpToError}
+                                onClose={editorErrors.closeErrorPanel}
+                            />
+                        </div>
                     </Split>
+                    </div>
                     {/* 右侧预览区 */}
                     <PreviewContainer>
                         <Preview html={htmlCode} css={compiledCss} js={jsCode} />
