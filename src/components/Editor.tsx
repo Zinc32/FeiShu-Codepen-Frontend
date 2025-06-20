@@ -1080,7 +1080,7 @@ const Editor: React.FC = () => {
                 </EditorActions>
             </EditorHeader>
             {/* 主内容区：左右分为编辑区和预览区 */}
-            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
                 <Split
                     direction="horizontal"
                     sizes={[50, 50]}
@@ -1093,12 +1093,12 @@ const Editor: React.FC = () => {
                     <Split
                         direction="vertical"
                         sizes={editorErrors.showErrorPanel ? [28, 28, 28, 16] : [33, 33, 34, 0]}
-                        minSize={36}
+                        minSize={0}
                         gutterSize={6}
                         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
                     >
                         {/* HTML 编辑器 */}
-                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ minHeight: 0, overflow: 'auto' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -1119,7 +1119,7 @@ const Editor: React.FC = () => {
                             <div id="html-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* CSS 编辑器 */}
-                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ minHeight: 0, overflow: 'auto' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -1152,7 +1152,7 @@ const Editor: React.FC = () => {
                             <div id="css-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* JS 编辑器 */}
-                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ minHeight: 0, overflow: 'auto' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
