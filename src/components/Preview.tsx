@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import styled from '@emotion/styled';
+import { compileJsFramework, loadTypeScriptCompiler } from '../services/compilerService';
 
 const PreviewContainer = styled.div`
   height: 100%;
@@ -17,6 +18,13 @@ interface PreviewProps {
 
 const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // 加载 TypeScript 编译器
+  useEffect(() => {
+    loadTypeScriptCompiler().catch(error => {
+      console.error('Failed to load TypeScript compiler:', error);
+    });
+  }, []);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -37,6 +45,11 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
       } else if (jsLanguage === 'vue') {
         libraryScripts = `
           <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+        `;
+      } else if (jsLanguage === 'ts') {
+        // 对于TypeScript，添加TypeScript编译器
+        libraryScripts = `
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/typescript/5.3.3/typescript.min.js"></script>
         `;
       }
 
@@ -60,7 +73,31 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
             ${html}
             <script>
               try {
-                ${js}
+                ${jsLanguage === 'ts' ? `
+                  // TypeScript代码处理
+                  if (typeof ts !== 'undefined') {
+                    try {
+                      const result = ts.transpileModule(\`${js}\`, {
+                        compilerOptions: {
+                          module: ts.ModuleKind.ESNext,
+                          target: ts.ScriptTarget.ES2018,
+                          jsx: ts.JsxEmit.Preserve,
+                          strict: false,
+                          esModuleInterop: true,
+                          allowSyntheticDefaultImports: true,
+                          skipLibCheck: true
+                        }
+                      });
+                      eval(result.outputText);
+                    } catch (tsError) {
+                      console.error('TypeScript compilation error:', tsError);
+                      document.body.innerHTML += '<div style="color: red; padding: 20px; font-family: monospace;">TypeScript Error: ' + tsError.message + '</div>';
+                    }
+                  } else {
+                    // 如果没有TypeScript编译器，直接执行代码
+                    ${js}
+                  }
+                ` : js}
               } catch (error) {
                 console.error('Preview script error:', error);
                 document.body.innerHTML += '<div style="color: red; padding: 20px; font-family: monospace;">Error: ' + error.message + '</div>';

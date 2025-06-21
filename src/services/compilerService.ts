@@ -9,6 +9,63 @@ export interface CompilationResult {
   error?: string;
 }
 
+//提供统一的TypeScript编译功能
+export const compileTypeScript = async (code: string): Promise<CompilationResult> => {
+  try {
+    // 检查是否有 TypeScript 编译器可用
+    if (typeof window !== 'undefined' && (window as any).ts) {
+      const ts = (window as any).ts;
+      const result = ts.transpileModule(code, {
+        compilerOptions: {
+          module: ts.ModuleKind.ESNext,
+          target: ts.ScriptTarget.ES2018,
+          jsx: ts.JsxEmit.Preserve,
+          strict: false,
+          esModuleInterop: true,
+          allowSyntheticDefaultImports: true,
+          skipLibCheck: true
+        }
+      });
+      return {
+        code: result.outputText,
+      };
+    }
+    // 如果没有 TypeScript 编译器，返回原始代码
+    return {
+      code: code,
+    };
+  } catch (error) {
+    console.error('TypeScript compilation error:', error);
+    return {
+      code: code, // 出错时返回原始代码
+      error: error instanceof Error ? error.message : 'Unknown TypeScript compilation error'
+    };
+  }
+};
+
+//用于动态加载TypeScript编译器
+export const loadTypeScriptCompiler = (): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    if (typeof window !== 'undefined' && (window as any).ts) {
+      resolve();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/typescript/5.3.3/typescript.min.js';
+    script.async = true;
+    script.onload = () => {
+      console.log('TypeScript compiler loaded');
+      resolve();
+    };
+    script.onerror = () => {
+      console.error('Failed to load TypeScript compiler');
+      reject(new Error('Failed to load TypeScript compiler'));
+    };
+    document.head.appendChild(script);
+  });
+};
+
 export const compileReact = (code: string): CompilationResult => {
   try {
     const result = Babel.transform(code, {
@@ -114,4 +171,34 @@ export const compileJavaScript = (code: string): CompilationResult => {
   return {
     code: code,
   };
+};
+
+// 添加了 compileJsFramework 统一函数，处理所有JavaScript框架的编译
+export const compileJsFramework = async (code: string, language: 'js' | 'react' | 'vue' | 'ts'): Promise<CompilationResult> => {
+  try {
+    let result: CompilationResult;
+    
+    switch (language) {
+      case 'react':
+        result = compileReact(code);
+        break;
+      case 'vue':
+        result = compileVue(code);
+        break;
+      case 'ts':
+        result = await compileTypeScript(code);
+        break;
+      default:
+        result = compileJavaScript(code);
+        break;
+    }
+    
+    return result;
+  } catch (error) {
+    console.error(`Error compiling ${language}:`, error);
+    return {
+      code: code,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
 };

@@ -234,6 +234,153 @@ export const EditorContainer = styled.div`
     letter-spacing: 0 !important;
     font-variant-ligatures: none !important;
   }
+
+  /* CodeMirror 自动补全UI样式 */
+  .cm-tooltip {
+    z-index: 1000 !important;
+    position: absolute !important;
+    background: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 6px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    font-family: "Consolas", "Monaco", "Lucida Console", "Liberation Mono",
+      "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Courier New", monospace !important;
+    font-size: 13px !important;
+    max-height: 200px !important;
+    overflow-y: auto !important;
+    min-width: 200px !important;
+  }
+
+  .cm-tooltip.cm-completionInfo {
+    z-index: 1001 !important;
+    background: #f8f9fa !important;
+    border: 1px solid #e1e4e8 !important;
+    border-radius: 6px !important;
+    padding: 8px 12px !important;
+    max-width: 300px !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    color: #24292e !important;
+  }
+
+  .cm-completionIcon {
+    margin-right: 8px !important;
+    opacity: 0.6 !important;
+  }
+
+  .cm-completionIcon[data-type="keyword"]::after {
+    content: "🔑" !important;
+  }
+
+  .cm-completionIcon[data-type="class"]::after {
+    content: "🏷️" !important;
+  }
+
+  .cm-completionIcon[data-type="property"]::after {
+    content: "⚙️" !important;
+  }
+
+  .cm-completionIcon[data-type="variable"]::after {
+    content: "📦" !important;
+  }
+
+  .cm-completionIcon[data-type="unit"]::after {
+    content: "📏" !important;
+  }
+
+  .cm-completionIcon[data-type="function"]::after {
+    content: "⚡" !important;
+  }
+
+  .cm-completionIcon[data-type="method"]::after {
+    content: "🔧" !important;
+  }
+
+  .cm-completionIcon[data-type="string"]::after {
+    content: "📝" !important;
+  }
+
+  .cm-completionIcon[data-type="number"]::after {
+    content: "🔢" !important;
+  }
+
+  .cm-completionIcon[data-type="color"]::after {
+    content: "🎨" !important;
+  }
+
+  .cm-completionIcon[data-type="tag"]::after {
+    content: "🏷️" !important;
+  }
+
+  .cm-completionIcon[data-type="attribute"]::after {
+    content: "📋" !important;
+  }
+
+  .cm-completionIcon[data-type="value"]::after {
+    content: "💎" !important;
+  }
+
+  .cm-completionIcon[data-type="pseudo"]::after {
+    content: "👻" !important;
+  }
+
+  .cm-completionIcon[data-type="atrule"]::after {
+    content: "📢" !important;
+  }
+
+  .cm-completionIcon[data-type="snippet"]::after {
+    content: "✂️" !important;
+  }
+
+  /* 补全选项样式 */
+  .cm-completionList {
+    list-style: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .cm-completionList li {
+    padding: 4px 8px !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    border-bottom: 1px solid #f0f0f0 !important;
+  }
+
+  .cm-completionList li:last-child {
+    border-bottom: none !important;
+  }
+
+  .cm-completionList li:hover {
+    background-color: #f6f8fa !important;
+  }
+
+  .cm-completionList li[aria-selected="true"] {
+    background-color: #0366d6 !important;
+    color: white !important;
+  }
+
+  /* 补全选项文本样式 */
+  .cm-completionList li span {
+    font-family: "Consolas", "Monaco", "Lucida Console", "Liberation Mono",
+      "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Courier New", monospace !important;
+    font-size: 13px !important;
+    font-weight: normal !important;
+    line-height: 1.3 !important;
+    letter-spacing: 0 !important;
+  }
+
+  /* 补全选项详情样式 */
+  .cm-completionDetail {
+    margin-left: auto !important;
+    font-size: 11px !important;
+    opacity: 0.7 !important;
+    color: #586069 !important;
+  }
+
+  .cm-completionList li[aria-selected="true"] .cm-completionDetail {
+    color: rgba(255, 255, 255, 0.8) !important;
+  }
 `;
 
 // Header components

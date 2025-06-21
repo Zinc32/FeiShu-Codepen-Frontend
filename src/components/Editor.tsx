@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { EditorView, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, keymap, EditorViewConfig } from '@codemirror/view';
 import { EditorState, Extension, Transaction } from '@codemirror/state';
@@ -15,7 +15,7 @@ import * as less from 'less';
 import Split from 'react-split';
 import { Global } from '@emotion/react';
 import { useAuth } from '../contexts/AuthContext';
-import { compileReact, compileVue, compileJavaScript, CompilationResult } from '../services/compilerService';
+import { compileJsFramework, loadTypeScriptCompiler, CompilationResult } from '../services/compilerService';
 import {
     PageContainer,
     Container,
@@ -37,6 +37,96 @@ import {
     Overlay,
     Toast
 } from '../styles/editorStyles';
+import { htmlAutocomplete, cssAutocomplete, jsAutocomplete } from '../services/autocompleteService';
+
+// 创建编辑器的辅助函数
+const createEditor = (
+    element: HTMLElement, 
+    langExtension: Extension, 
+    setEditor: React.Dispatch<React.SetStateAction<EditorView | null>>, 
+    setCode: React.Dispatch<React.SetStateAction<string>>, 
+    initialContent: string,
+    isUpdatingFromState: boolean,
+    autocompleteExt?: Extension
+) => {
+    const commonExtensions = [
+        lineNumbers({
+            formatNumber: (lineNo) => lineNo.toString()
+        }),
+        highlightActiveLineGutter(),
+        highlightSpecialChars(),
+        drawSelection({
+            drawRangeCursor: true
+        }),
+        dropCursor(),
+        rectangularSelection(),
+        crosshairCursor(),
+        highlightActiveLine(),
+        keymap.of([
+            ...defaultKeymap,
+            ...historyKeymap
+        ]),
+        history(),
+        syntaxHighlighting(defaultHighlightStyle),
+        // 确保选择功能正常工作和字体优化
+        EditorView.theme({
+            '&.cm-focused .cm-selectionBackground': {
+                backgroundColor: '#b3d4fc !important'
+            },
+            '.cm-selectionBackground': {
+                backgroundColor: '#c8e1ff !important'
+            },
+            '.cm-content': {
+                fontFamily: '"Consolas", "Monaco", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Courier New", monospace !important',
+                fontSize: '13px !important',
+                fontWeight: 'normal !important',
+                lineHeight: '1.3 !important',
+                letterSpacing: '0 !important',
+                textRendering: 'auto !important',
+                WebkitFontSmoothing: 'auto !important',
+                MozOsxFontSmoothing: 'auto !important',
+                fontVariantLigatures: 'none !important'
+            },
+            '.cm-editor .cm-line': {
+                fontFamily: '"Consolas", "Monaco", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Courier New", monospace !important',
+                fontSize: '13px !important',
+                fontWeight: 'normal !important',
+                lineHeight: '1.3 !important',
+                letterSpacing: '0 !important'
+            },
+            '.cm-editor': {
+                fontFamily: '"Consolas", "Monaco", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Courier New", monospace !important'
+            },
+            '.cm-gutters': {
+                fontFamily: '"Consolas", "Monaco", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Courier New", monospace !important',
+                fontSize: '12px !important'
+            }
+        })
+    ];
+
+    const state = EditorState.create({
+        doc: initialContent,
+        extensions: [
+            ...commonExtensions,
+            langExtension,
+            autocompleteExt || [],
+            // 监听编辑器变化，在非程序性更新时同步到React state
+            EditorView.updateListener.of((update) => {
+                if (update.docChanged && !isUpdatingFromState) {
+                    // 简化逻辑：如果不是程序性更新，就认为是用户输入
+                    const newContent = update.state.doc.toString();
+                    setCode(newContent);
+                }
+            })
+        ]
+    });
+    const view = new EditorView({
+        state,
+        parent: element
+    });
+    setEditor(view);
+    return view;
+};
 
 const Editor: React.FC = () => {
     const navigate = useNavigate();
@@ -67,6 +157,14 @@ const Editor: React.FC = () => {
     const [compiledJs, setCompiledJs] = useState('');
     const [jsCompilationError, setJsCompilationError] = useState<string>('');
 
+    // 添加一个标志来跟踪是否是程序性更新
+    const [isUpdatingFromState, setIsUpdatingFromState] = useState(false);
+    
+    // 使用ref来跟踪语言变化，避免编辑器初始化时使用过时的内容
+    const languageChangeRef = useRef({ cssLanguage, jsLanguage });
+    const [shouldReinitializeEditors, setShouldReinitializeEditors] = useState(false);
+    const [isPenLoaded, setIsPenLoaded] = useState(false); // 添加状态跟踪Pen是否已加载
+
     const fetchUserPens = useCallback(async () => {
         try {
             const pens = await getUserPens();
@@ -86,12 +184,40 @@ const Editor: React.FC = () => {
             ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
             : jsLanguage === 'vue'
             ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
+            : jsLanguage === 'ts'
+            ? 'console.log("Hello TypeScript!");'
             : 'console.log("Hello World");';
 
         setHtmlCode(defaultHtml);
         setCssCode(defaultCss);
         setJsCode(defaultJs);
-    }, [jsLanguage]);
+        setIsPenLoaded(true); // 标记Pen已初始化
+    }, []);
+
+    // 当语言改变时，如果是新建状态，更新默认代码
+    useEffect(() => {
+        if (!currentPen) {
+            // 只有在新建状态下才更新默认代码
+            const defaultJs = jsLanguage === 'react' 
+                ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
+                : jsLanguage === 'vue'
+                ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
+                : jsLanguage === 'ts'
+                ? 'console.log("Hello TypeScript!");'
+                : 'console.log("Hello World");';
+            
+            setJsCode(defaultJs);
+        }
+    }, [jsLanguage, currentPen]);
+
+    // 监听语言变化，标记需要重新初始化编辑器
+    useEffect(() => {
+        if (languageChangeRef.current.cssLanguage !== cssLanguage || 
+            languageChangeRef.current.jsLanguage !== jsLanguage) {
+            languageChangeRef.current = { cssLanguage, jsLanguage };
+            setShouldReinitializeEditors(true);
+        }
+    }, [cssLanguage, jsLanguage]);
 
     // 加载单个Pen的函数（仿照handleLoadPen的逻辑）
     const loadPenById = useCallback(async (penId: string) => {
@@ -111,12 +237,16 @@ const Editor: React.FC = () => {
             // 加载语言选择（如果保存了的话）
             if (pen.cssLanguage) setCssLanguage(pen.cssLanguage);
             if (pen.jsLanguage) setJsLanguage(pen.jsLanguage);
+            
+            // 标记Pen已加载完成
+            setIsPenLoaded(true);
             // console.log(pen.cssLanguage)
             // console.log(pen.jsLanguage)
         } catch (error) {
             console.error('Failed to load pen by ID:', error);
             // 如果加载失败，显示默认内容
             initializeNewPen();
+            setIsPenLoaded(true);
         }
     }, [initializeNewPen]);
 
@@ -140,123 +270,55 @@ const Editor: React.FC = () => {
         }
     }, [params.id, userPens.length, loadPenById, initializeNewPen]);
 
-    // 添加一个标志来跟踪是否是程序性更新
-    const [isUpdatingFromState, setIsUpdatingFromState] = useState(false);
-
+    // 初始化编辑器或重新初始化以响应语言变化
     useEffect(() => {
+        // 只有在Pen加载完成后才初始化编辑器
+        if (!isPenLoaded) return;
+        
         // Initialize editors only once
         const htmlElement = document.getElementById('html-editor');
         const cssElement = document.getElementById('css-editor');
         const jsElement = document.getElementById('js-editor');
 
-        const commonExtensions = [
-            lineNumbers({
-                formatNumber: (lineNo) => lineNo.toString()
-            }),
-            highlightActiveLineGutter(),
-            highlightSpecialChars(),
-            drawSelection({
-                drawRangeCursor: true
-            }),
-            dropCursor(),
-            rectangularSelection(),
-            crosshairCursor(),
-            highlightActiveLine(),
-            keymap.of([
-                ...defaultKeymap,
-                ...historyKeymap
-            ]),
-            history(),
-            syntaxHighlighting(defaultHighlightStyle),
-            // 确保选择功能正常工作和字体优化
-            EditorView.theme({
-                '&.cm-focused .cm-selectionBackground': {
-                    backgroundColor: '#b3d4fc !important'
-                },
-                '.cm-selectionBackground': {
-                    backgroundColor: '#c8e1ff !important'
-                },
-                '.cm-content': {
-                    fontFamily: '"Consolas", "Monaco", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Courier New", monospace !important',
-                    fontSize: '13px !important',
-                    fontWeight: 'normal !important',
-                    lineHeight: '1.3 !important',
-                    letterSpacing: '0 !important',
-                    textRendering: 'auto !important',
-                    WebkitFontSmoothing: 'auto !important',
-                    MozOsxFontSmoothing: 'auto !important',
-                    fontVariantLigatures: 'none !important'
-                },
-                '.cm-editor .cm-line': {
-                    fontFamily: '"Consolas", "Monaco", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Courier New", monospace !important',
-                    fontSize: '13px !important',
-                    fontWeight: 'normal !important',
-                    lineHeight: '1.3 !important',
-                    letterSpacing: '0 !important'
-                },
-                '.cm-editor': {
-                    fontFamily: '"Consolas", "Monaco", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Courier New", monospace !important'
-                },
-                '.cm-gutters': {
-                    fontFamily: '"Consolas", "Monaco", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Courier New", monospace !important',
-                    fontSize: '12px !important'
-                }
-            })
-        ];
-
-        // Create a helper function to initialize each editor
-        const createEditor = (element: HTMLElement, langExtension: Extension, setEditor: React.Dispatch<React.SetStateAction<EditorView | null>>, setCode: React.Dispatch<React.SetStateAction<string>>, initialContent: string) => {
-            const state = EditorState.create({
-                doc: initialContent,
-                extensions: [
-                    ...commonExtensions,
-                    langExtension,
-                    // 监听编辑器变化，在非程序性更新时同步到React state
-                    EditorView.updateListener.of((update) => {
-                        if (update.docChanged && !isUpdatingFromState) {
-                            // 简化逻辑：如果不是程序性更新，就认为是用户输入
-                            const newContent = update.state.doc.toString();
-                            setCode(newContent);
-                        }
-                    })
-                ]
-            });
-            const view = new EditorView({
-                state,
-                parent: element
-            });
-            setEditor(view);
-            return view;
-        };
+        if (!htmlElement || !cssElement || !jsElement) return;
 
         // Destroy existing editors before creating new ones
         if (htmlEditor) htmlEditor.destroy();
         if (cssEditor) cssEditor.destroy();
         if (jsEditor) jsEditor.destroy();
 
+        // 清空容器
+        htmlElement.innerHTML = '';
+        cssElement.innerHTML = '';
+        jsElement.innerHTML = '';
+
         let newHtmlEditor: EditorView | null = null;
         let newCssEditor: EditorView | null = null;
         let newJsEditor: EditorView | null = null;
 
         if (htmlElement) {
-            htmlElement.innerHTML = '';
-            newHtmlEditor = createEditor(htmlElement, html(), setHtmlEditor, setHtmlCode, htmlCode);
+            newHtmlEditor = createEditor(htmlElement, html(), setHtmlEditor, setHtmlCode, htmlCode, isUpdatingFromState, htmlAutocomplete);
         }
         if (cssElement) {
-            cssElement.innerHTML = '';
-            newCssEditor = createEditor(cssElement, css(), setCssEditor, setCssCode, cssCode);
+            newCssEditor = createEditor(cssElement, css(), setCssEditor, setCssCode, cssCode, isUpdatingFromState, cssAutocomplete);
         }
         if (jsElement) {
-            jsElement.innerHTML = '';
-            newJsEditor = createEditor(jsElement, javascript({ typescript: jsLanguage === 'ts' }), setJsEditor, setJsCode, jsCode);
+            const jsExtension =
+                jsLanguage === 'ts' || jsLanguage === 'react'
+                    ? javascript({ typescript: true })
+                    : javascript();
+            newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, isUpdatingFromState, jsAutocomplete);
         }
+
+        // 重置重新初始化标志
+        setShouldReinitializeEditors(false);
 
         return () => {
             newHtmlEditor?.destroy();
             newCssEditor?.destroy();
             newJsEditor?.destroy();
         };
-    }, []); // 只初始化一次
+    }, [shouldReinitializeEditors, jsLanguage, isPenLoaded]); // 添加isPenLoaded作为依赖
 
     // 当React state变化时，同步更新编辑器内容（不重建编辑器）
     useEffect(() => {
@@ -323,19 +385,7 @@ const Editor: React.FC = () => {
     // 编译 JavaScript 框架代码
     const compileJs = useCallback(async (code: string, language: 'js' | 'react' | 'vue' | 'ts') => {
         try {
-            let result: CompilationResult;
-            
-            switch (language) {
-                case 'react':
-                    result = compileReact(code);
-                    break;
-                case 'vue':
-                    result = compileVue(code);
-                    break;
-                default:
-                    result = compileJavaScript(code);
-                    break;
-            }
+            const result = await compileJsFramework(code, language);
             
             if (result.error) {
                 setJsCompilationError(result.error);
@@ -365,6 +415,13 @@ const Editor: React.FC = () => {
         compileJs(jsCode, jsLanguage).then(setCompiledJs);
     }, [jsCode, jsLanguage, compileJs]);
 
+    // 加载 TypeScript 编译器
+    useEffect(() => {
+        loadTypeScriptCompiler().catch(error => {
+            console.error('Failed to load TypeScript compiler:', error);
+        });
+    }, []);
+
     // 检测内容是否有变化
     const checkForChanges = useCallback(() => {
         if (!currentPen) {
@@ -373,7 +430,9 @@ const Editor: React.FC = () => {
                 htmlCode !== '<div>Hello World</div>' ||
                 cssCode !== 'body { color: blue; }' ||
                 jsCode !== 'console.log("Hello World");' ||
-                title !== 'Untitled';
+                title !== 'Untitled' ||
+                cssLanguage !== 'css' ||
+                jsLanguage !== 'js';
             setHasUnsavedChanges(hasChanges);
         } else {
             // 编辑状态下，比较当前内容与保存的内容
@@ -381,10 +440,12 @@ const Editor: React.FC = () => {
                 htmlCode !== currentPen.html ||
                 cssCode !== currentPen.css ||
                 jsCode !== currentPen.js ||
-                title !== currentPen.title;
+                title !== currentPen.title ||
+                cssLanguage !== (currentPen.cssLanguage || 'css') ||
+                jsLanguage !== (currentPen.jsLanguage || 'js');
             setHasUnsavedChanges(hasChanges);
         }
-    }, [htmlCode, cssCode, jsCode, title, currentPen]);
+    }, [htmlCode, cssCode, jsCode, title, cssLanguage, jsLanguage, currentPen]);
 
     // 监听内容变化
     useEffect(() => {
@@ -404,59 +465,6 @@ const Editor: React.FC = () => {
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [hasUnsavedChanges]);
-
-    const compileTypeScript = useCallback(async (code: string): Promise<string> => {
-        try {
-            // 检查是否有 TypeScript 编译器可用
-            if (typeof window !== 'undefined' && (window as any).ts) {
-                const ts = (window as any).ts;
-                const result = ts.transpileModule(code, {
-                    compilerOptions: {
-                        module: ts.ModuleKind.ESNext,
-                        target: ts.ScriptTarget.ES2018,
-                        jsx: ts.JsxEmit.Preserve,
-                        strict: false,
-                        esModuleInterop: true,
-                        allowSyntheticDefaultImports: true,
-                        skipLibCheck: true
-                    }
-                });
-                return result.outputText;
-            }
-            // 如果没有 TypeScript 编译器，返回原始代码
-            return code;
-        } catch (error) {
-            console.error('TypeScript compilation error:', error);
-            return code; // 出错时返回原始代码
-        }
-    }, []);
-
-    useEffect(() => {
-        // 动态加载 TypeScript 编译器
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/typescript/5.3.3/typescript.min.js';
-        script.async = true;
-        script.onload = () => {
-            console.log('TypeScript compiler loaded');
-        };
-        document.head.appendChild(script);
-
-        return () => {
-            // 清理脚本标签
-            const existingScript = document.querySelector('script[src*="typescript"]');
-            if (existingScript) {
-                document.head.removeChild(existingScript);
-            }
-        };
-    }, []);
-
-    useEffect(() => {
-        if (jsLanguage === 'ts') {
-            compileTypeScript(jsCode).then(setCompiledJs);
-        } else {
-            setCompiledJs(jsCode);
-        }
-    }, [jsCode, jsLanguage, compileTypeScript]);
 
     const handleSave = async () => {
         if (isSaving) return;
@@ -509,6 +517,7 @@ const Editor: React.FC = () => {
             const confirmLeave = window.confirm('您有未保存的更改，确定要创建新的 Pen 吗？');
             if (!confirmLeave) return;
         }
+        setIsPenLoaded(false); // 重置加载标志
         initializeNewPen();
         setHasUnsavedChanges(false);
     }, [initializeNewPen, hasUnsavedChanges]);
@@ -573,6 +582,12 @@ const Editor: React.FC = () => {
             setHtmlCode(selectedPen.html);
             setCssCode(selectedPen.css);
             setJsCode(selectedPen.js);
+            
+            // 恢复保存的语言设置
+            if (selectedPen.cssLanguage) setCssLanguage(selectedPen.cssLanguage);
+            if (selectedPen.jsLanguage) setJsLanguage(selectedPen.jsLanguage);
+            
+            setIsPenLoaded(true); // 标记Pen已加载
             setHasUnsavedChanges(false);
         } else {
             handleNew();
@@ -594,6 +609,30 @@ const Editor: React.FC = () => {
         setTimeout(() => {
             setShowToast(false);
         }, 2000);
+    };
+
+    // 处理CSS语言切换
+    const handleCssLanguageChange = (newLanguage: 'css' | 'scss' | 'less') => {
+        setCssLanguage(newLanguage);
+    };
+
+    // 处理JavaScript语言切换
+    const handleJsLanguageChange = (newLanguage: 'js' | 'react' | 'vue' | 'ts') => {
+        // console.log("currentLanguage",newLanguage)
+        setJsLanguage(newLanguage);
+        
+        // 如果是新建状态，更新默认代码
+        if (!currentPen) {
+            const defaultJs = newLanguage === 'react' 
+                ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
+                : newLanguage === 'vue'
+                ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
+                : newLanguage === 'ts'
+                ? 'console.log("Hello TypeScript!");'
+                : 'console.log("Hello World");';
+            
+            setJsCode(defaultJs);
+        }
     };
 
     return (
@@ -729,7 +768,7 @@ const Editor: React.FC = () => {
                                 <span>CSS</span>
                                 <LanguageSelect
                                     value={cssLanguage}
-                                    onChange={(e) => setCssLanguage(e.target.value as 'css' | 'scss' | 'less')}
+                                    onChange={(e) => handleCssLanguageChange(e.target.value as 'css' | 'scss' | 'less')}
                                 >
                                     <option value="css">CSS</option>
                                     <option value="scss">SCSS</option>
@@ -762,7 +801,7 @@ const Editor: React.FC = () => {
                                 <span>JavaScript</span>
                                 <LanguageSelect
                                     value={jsLanguage}
-                                    onChange={(e) => setJsLanguage(e.target.value as 'js' | 'react' | 'vue' | 'ts')}
+                                    onChange={(e) => handleJsLanguageChange(e.target.value as 'js' | 'react' | 'vue' | 'ts')}
                                 >
                                     <option value="js">JavaScript</option>
                                     <option value="react">React</option>
