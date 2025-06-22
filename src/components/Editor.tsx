@@ -15,7 +15,7 @@ import * as sass from 'sass';
 import * as less from 'less';
 import Split from 'react-split';
 import { Global } from '@emotion/react';
-import ErrorPanel from './ErrorPanel';
+
 import { useEditorErrors } from '../hooks/useEditorErrors';
 import { createErrorHighlightExtension } from '../utils/editorErrorHighlight';
 
@@ -44,29 +44,9 @@ import {
     Toast
 } from '../styles/editorStyles';
 
-const ErrorIndicator = styled.div<{ hasErrors: boolean; errorCount: number }>`
-    display: ${props => props.hasErrors ? 'flex' : 'none'};
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: linear-gradient(135deg, #ff4757 0%, #ff3742 100%);
-    color: white;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    
-    &:hover {
-        background: linear-gradient(135deg, #ff3742 0%, #ff2633 100%);
-        transform: translateY(-1px);
-    }
-    
-    &::before {
-        content: '⚠️';
-        font-size: 14px;
-    }
-`;
+
+
+
 
 const Editor: React.FC = () => {
     const navigate = useNavigate();
@@ -126,8 +106,8 @@ const Editor: React.FC = () => {
         const defaultJs = jsLanguage === 'react'
             ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
             : jsLanguage === 'vue'
-            ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
-            : 'console.log("Hello World");';
+                ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
+                : 'console.log("Hello World");';
 
         setHtmlCode(defaultHtml);
         setCssCode(defaultCss);
@@ -209,8 +189,6 @@ const Editor: React.FC = () => {
             ]),
             history(),
             syntaxHighlighting(defaultHighlightStyle),
-            // 添加错误高亮扩展
-            ...createErrorHighlightExtension(),
             // 确保选择功能正常工作和字体优化
             EditorView.theme({
                 '&.cm-focused .cm-selectionBackground': {
@@ -254,12 +232,15 @@ const Editor: React.FC = () => {
                 extensions: [
                     ...commonExtensions,
                     langExtension,
+                    // 添加错误高亮扩展（展开数组）
+                    ...createErrorHighlightExtension(),
                     // 监听编辑器变化，在非程序性更新时同步到React state
                     EditorView.updateListener.of((update) => {
                         if (update.docChanged && !isUpdatingFromState) {
                             // 简化逻辑：如果不是程序性更新，就认为是用户输入
                             const newContent = update.state.doc.toString();
                             setCode(newContent);
+                            setHasUnsavedChanges(true);
                         }
                     })
                 ]
@@ -412,7 +393,7 @@ const Editor: React.FC = () => {
     const checkForChanges = useCallback(() => {
         if (!currentPen) {
             // 新建状态下，如果内容不是默认内容，则认为有变化
-            const hasChanges = 
+            const hasChanges =
                 htmlCode !== '<div>Hello World</div>' ||
                 cssCode !== 'body { color: blue; }' ||
                 jsCode !== 'console.log("Hello World");' ||
@@ -420,7 +401,7 @@ const Editor: React.FC = () => {
             setHasUnsavedChanges(hasChanges);
         } else {
             // 编辑状态下，比较当前内容与保存的内容
-            const hasChanges = 
+            const hasChanges =
                 htmlCode !== currentPen.html ||
                 cssCode !== currentPen.css ||
                 jsCode !== currentPen.js ||
@@ -683,14 +664,6 @@ const Editor: React.FC = () => {
                     />
                 </div>
                 <EditorActions>
-                    {/* 错误指示器 */}
-                    <ErrorIndicator
-                        hasErrors={editorErrors.getTotalErrorCount() > 0}
-                        errorCount={editorErrors.getTotalErrorCount()}
-                        onClick={editorErrors.toggleErrorPanel}
-                    >
-                        {editorErrors.getTotalErrorCount()} 错误
-                    </ErrorIndicator>
                     <Select onChange={handleLoadPen} value={currentPen?.id || ''}>
                         <option value="">📁 New Pen</option>
                         {userPens.map(pen => (
@@ -730,8 +703,8 @@ const Editor: React.FC = () => {
                     {/* 左侧编辑区（纵向可拖拽） */}
                     <Split
                         direction="vertical"
-                        sizes={editorErrors.showErrorPanel ? [28, 28, 28, 16] : [33, 33, 34, 0]}
-                        minSize={0}
+                        sizes={[30,30,40]}
+                        minSize={100}
                         gutterSize={6}
                         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
                     >
@@ -757,7 +730,7 @@ const Editor: React.FC = () => {
                             <div id="html-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* CSS 编辑器 */}
-                        <div style={{minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -821,35 +794,11 @@ const Editor: React.FC = () => {
                                     <option value="ts">TS</option>
                                 </LanguageSelect>
                             </div>
-                            {jsCompilationError && (
-                                <div style={{
-                                    padding: '8px 12px',
-                                    backgroundColor: '#ffeaea',
-                                    color: '#d73a49',
-                                    fontSize: '12px',
-                                    borderBottom: '1px solid #f97583'
-                                }}>
-                                    Compilation Error: {jsCompilationError}
-                                </div>
-                            )}
+
                             <div id="js-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
 
-                        {/* 错误面板 - 始终渲染但控制显示状态 */}
-                        <div style={{
-                            minHeight: 0,
-                            overflow: 'hidden',
-                            display: editorErrors.showErrorPanel ? 'flex' : 'none',
-                            flexDirection: 'column'
-                        }}>
-                            <ErrorPanel
-                                htmlErrors={editorErrors.errors.htmlErrors}
-                                cssErrors={editorErrors.errors.cssErrors}
-                                jsErrors={editorErrors.errors.jsErrors}
-                                onErrorClick={editorErrors.jumpToError}
-                                onClose={editorErrors.closeErrorPanel}
-                            />
-                        </div>
+
                     </Split>
                     {/* 右侧预览区 */}
                     <PreviewContainer>
