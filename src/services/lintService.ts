@@ -382,39 +382,78 @@ function jsLinter(view: EditorView): Diagnostic[] {
     const code = doc.toString();
 
     try {
-        // 使用 new Function() 来检测基本的语法错误
-        new Function(code);
-    } catch (error: any) {
-        if (error instanceof SyntaxError) {
-            // 尝试解析错误位置
-            let line = 1;
-            let column = 0;
+        // --- 1. 首先进行基本的语法错误检查 ---
+        try {
+            // 使用 new Function() 来检测基本的语法错误
+            new Function(code);
+        } catch (error: any) {
+            if (error instanceof SyntaxError) {
+                // 尝试解析错误位置
+                let line = 1;
+                let column = 0;
 
-            // 从错误消息中提取位置信息
-            const message = error.message;
+                // 从错误消息中提取位置信息
+                const message = error.message;
 
-            // 查找行号
-            const lineMatch = message.match(/line (\d+)/i);
-            if (lineMatch) {
-                line = parseInt(lineMatch[1], 10);
+                // 查找行号
+                const lineMatch = message.match(/line (\d+)/i);
+                if (lineMatch) {
+                    line = parseInt(lineMatch[1], 10);
+                }
+
+                // 计算错误位置
+                const lines = code.split('\n');
+                let from = 0;
+                for (let i = 0; i < Math.min(line - 1, lines.length - 1); i++) {
+                    from += lines[i].length + 1; // +1 for newline
+                }
+
+                const to = Math.min(from + (lines[line - 1]?.length || 0), code.length);
+
+                diagnostics.push({
+                    from,
+                    to,
+                    severity: 'error',
+                    message: error.message.replace(/^SyntaxError:\s*/, '')
+                });
             }
-
-            // 计算错误位置
-            const lines = code.split('\n');
-            let from = 0;
-            for (let i = 0; i < Math.min(line - 1, lines.length - 1); i++) {
-                from += lines[i].length + 1; // +1 for newline
-            }
-
-            const to = Math.min(from + (lines[line - 1]?.length || 0), code.length);
-
-            diagnostics.push({
-                from,
-                to,
-                severity: 'error',
-                message: error.message.replace(/^SyntaxError:\s*/, '')
-            });
         }
+
+        // --- 2. 接着进行危险函数/API 的检查 ---
+        const dangerousFunctions = [
+            'eval(', 'new Function(',
+            'document.write(', 'document.cookie',
+            'localStorage', 'sessionStorage',
+            'XMLHttpRequest', 'fetch(', 'WebSocket(',
+            'window.open(', 'location.href',
+            'setTimeout(', 'setInterval(',
+            'Worker', 'SharedWorker',
+            'importScripts',
+            'Blob', 'URL.createObjectURL',
+            'btoa', 'atob',
+            'alert(', 'prompt(', 'confirm('
+        ];
+
+        dangerousFunctions.forEach(func => {
+            let match;
+            const regex = new RegExp(`\\b${func.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g');
+            while ((match = regex.exec(code)) !== null) {
+                diagnostics.push({
+                    from: match.index,
+                    to: match.index + match[0].length,
+                    severity: 'error',
+                    message: `检测到危险函数: "${match[0].replace('(', '')}"。出于安全考虑，此操作不允许。`
+                });
+            }
+        });
+    } catch (error: any) {
+        // 捕获 linting 工具本身可能抛出的其他错误
+        diagnostics.push({
+            from: 0,
+            to: code.length,
+            severity: 'error',
+            message: `JavaScript linting 错误: ${error.message}`
+        });
     }
 
     return diagnostics;
@@ -455,4 +494,4 @@ function createEnhancedLinter(linterFn: (view: EditorView) => Diagnostic[]) {
 // 导出增强的 lint 扩展
 export const htmlLint = createEnhancedLinter(htmlLinter);
 export const cssLint = createEnhancedLinter(cssLinter);
-export const jsLint = createEnhancedLinter(jsLinter); 
+export const jsLint = createEnhancedLinter(jsLinter);
