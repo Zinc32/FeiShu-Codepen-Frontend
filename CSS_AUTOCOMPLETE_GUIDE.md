@@ -21,55 +21,203 @@
 - **类型补全**：TypeScript类型（如果启用）
 - **智能上下文补全**：根据代码上下文提供相关补全
 
+### CodeMirror原生HTML补全功能包含：
+- **HTML5标签补全**：所有标准HTML5标签
+- **HTML属性补全**：标签相关的属性
+- **智能上下文感知**：根据标签提供相关属性
+- **回车键补全**：支持回车键选择补全项
+
 ### 本项目新增的语法补全功能：
+
+## HTML 标签和属性补全
+
+**设计原则**：提供CodeMirror原生没有的智能标签补全功能，支持输入部分标签名然后按回车补全。
+
+### 1. 智能标签补全
+支持输入部分标签名，然后按回车键补全完整标签：
+
+```html
+<!-- 输入 'butt' 然后按回车 -->
+<button></button>
+
+<!-- 输入 'div' 然后按回车 -->
+<div></div>
+
+<!-- 输入 'img' 然后按回车 -->
+<img  />
+
+<!-- 输入 'form' 然后按回车 -->
+<form></form>
+```
+
+### 2. 智能属性补全
+在标签内提供属性补全，支持回车键选择：
+
+```html
+<!-- 在 <div 后输入 'class' 然后按回车 -->
+<div class=""></div>
+
+<!-- 在 <img 后输入 'src' 然后按回车 -->
+<img src="" />
+
+<!-- 在 <input 后输入 'type' 然后按回车 -->
+<input type="" />
+```
+
+### 3. 自闭合标签识别
+自动识别自闭合标签，光标定位在属性位置：
+
+```html
+<!-- 输入 'img' 然后按回车 -->
+<img  />
+
+<!-- 输入 'input' 然后按回车 -->
+<input  />
+
+<!-- 输入 'br' 然后按回车 -->
+<br />
+```
+
+### 4. 普通标签补全
+普通标签补全后，光标定位在内容位置：
+
+```html
+<!-- 输入 'div' 然后按回车 -->
+<div></div>
+
+<!-- 输入 'p' 然后按回车 -->
+<p></p>
+
+<!-- 输入 'span' 然后按回车 -->
+<span></span>
+```
+
+## HTML 代码片段补全
+
+**设计原则**：只提供CodeMirror原生没有的HTML代码片段，避免重复实现。
+
+#### 1. HTML5文档结构片段
+```html
+<!-- 输入 'html5' 后选择 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Document</title>
+</head>
+<body>
+	
+</body>
+</html>
+```
+
+#### 2. 常用meta标签片段
+```html
+<!-- 输入 'meta charset' 后选择 -->
+<meta charset="UTF-8">
+
+<!-- 输入 'meta viewport' 后选择 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+```
+
+#### 3. 资源链接片段
+```html
+<!-- 输入 'link css' 后选择 -->
+<link rel="stylesheet" href="style.css">
+
+<!-- 输入 'script src' 后选择 -->
+<script src="script.js"></script>
+```
+
+#### 4. 表单结构片段
+```html
+<!-- 输入 'form' 后选择 -->
+<form action="" method="post">
+	
+</form>
+
+<!-- 输入 'fieldset' 后选择 -->
+<fieldset>
+	<legend>Legend</legend>
+	
+</fieldset>
+```
+
+#### 5. 列表结构片段
+```html
+<!-- 输入 'ul list' 后选择 -->
+<ul>
+	<li></li>
+	<li></li>
+</ul>
+
+<!-- 输入 'ol list' 后选择 -->
+<ol>
+	<li></li>
+	<li></li>
+</ol>
+```
+
+#### 6. 表格结构片段
+```html
+<!-- 输入 'table' 后选择 -->
+<table>
+	<thead>
+		<tr>
+			<th></th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr>
+			<td></td>
+		</tr>
+	</tbody>
+</table>
+```
+
+#### 7. 语义化布局片段
+```html
+<!-- 输入 'semantic layout' 后选择 -->
+<header>
+	
+</header>
+<main>
+	
+</main>
+<footer>
+	
+</footer>
+```
+
+#### 8. 媒体元素片段
+```html
+<!-- 输入 'figure' 后选择 -->
+<figure>
+	<img src="" alt="">
+	<figcaption></figcaption>
+</figure>
+```
+
+#### 9. 数据属性片段
+```html
+<!-- 输入 'data attribute' 后选择 -->
+data-attribute="value"
+
+<!-- 输入 'aria attribute' 后选择 -->
+aria-label="value"
+```
 
 ## CSS 语法补全
 
-#### 1. 大括号自动补全
-当你在CSS编辑器中输入选择器、伪类、媒体查询或动画关键帧后，会自动提示补全大括号：
-
-**选择器补全：**
-```css
-.container { }  // 输入 .container 后按 Tab 或 Enter
-```
-
-**伪类补全：**
-```css
-.button:hover { }  // 输入 :hover 后按 Tab 或 Enter
-```
-
-**媒体查询补全：**
-```css
-@media (max-width: 768px) { }  // 输入媒体查询条件后按 Tab 或 Enter
-```
-
-**动画关键帧补全：**
-```css
-@keyframes slideIn { }  // 输入动画名称后按 Tab 或 Enter
-```
-
-#### 2. 冒号自动补全
-当你在CSS属性后输入时，会自动提示补全冒号：
-
-```css
-color: ;  // 输入 color 后按 Tab 或 Enter
-```
-
-#### 3. 分号自动补全
-当你在CSS值后输入时，会自动提示补全分号：
-
-```css
-color: red;  // 输入值后按 Tab 或 Enter
-```
-
-#### 4. 单位自动补全
-当你在数字后输入时，会提示常用的CSS单位：
-
-```css
-width: 100px;  // 输入数字后按 Tab 或 Enter 选择单位
-```
-
-支持的单位：`px`, `em`, `rem`, `%`, `vh`, `vw`, `vmin`, `vmax`, `pt`, `pc`, `in`, `cm`, `mm`
+**注意**：CSS补全完全使用CodeMirror原生功能，包括：
+- 所有CSS属性补全
+- 所有CSS值补全
+- 颜色名称补全
+- 伪类补全
+- @规则补全
+- 单位补全
+- 回车键补全支持
 
 ## JavaScript 代码片段补全
 
@@ -78,6 +226,7 @@ width: 100px;  // 输入数字后按 Tab 或 Enter 选择单位
 - 所有关键字、全局对象、方法、属性
 - 智能上下文感知补全
 - TypeScript支持
+- 回车键补全支持
 
 ### 本项目新增的代码片段
 
@@ -338,14 +487,28 @@ debugger;
 
 ## 智能上下文补全
 
+### HTML 上下文感知补全
+**CodeMirror原生提供**，包括：
+
+1. **标签上下文**：在 `<tag>` 内提供属性补全
+2. **属性上下文**：在属性后提供值补全
+3. **智能标签识别**：自动识别自闭合标签
+4. **回车键补全**：支持回车键选择补全项
+
+**本项目增强功能**：
+1. **智能标签补全**：输入部分标签名，按回车补全完整标签
+2. **智能属性补全**：在标签内提供常用属性补全
+3. **光标定位优化**：补全后光标定位在合适位置
+
 ### CSS 上下文感知补全
-系统会根据当前CSS代码上下文智能提供相关补全：
+**CodeMirror原生提供**，包括：
 
 1. **选择器上下文**：在选择器后提供大括号补全
 2. **属性上下文**：在CSS属性后提供冒号补全
 3. **值上下文**：在CSS值后提供分号补全
 4. **数字上下文**：在数字后提供单位补全
 5. **规则上下文**：在CSS规则后提供右大括号补全
+6. **回车键补全**：支持回车键选择补全项
 
 ### JavaScript 上下文感知补全
 **CodeMirror原生提供**，包括：
@@ -358,6 +521,7 @@ debugger;
 6. **Promise 上下文**：在异步操作中提供 Promise 方法
 7. **DOM 上下文**：在 DOM 操作中提供 DOM API 方法
 8. **Console 上下文**：在 `console.` 后提供控制台方法
+9. **回车键补全**：支持回车键选择补全项
 
 ### 排除规则
 - 在注释中不提供补全
@@ -366,29 +530,51 @@ debugger;
 
 ## 使用方法
 
-1. 在CSS或JavaScript编辑器中输入相应的代码
+1. 在HTML、CSS或JavaScript编辑器中输入相应的代码
 2. 当出现自动补全提示时，按 `Tab` 键或 `Enter` 键选择补全项
 3. 也可以使用方向键选择不同的补全选项
 4. 使用 `Ctrl+Space` 手动触发补全
 5. 对于代码片段，使用 `Tab` 键在占位符之间跳转
 
+### HTML标签补全示例
+```html
+<!-- 输入 'butt' 然后按回车 -->
+butt → <button></button>
+
+<!-- 输入 'div' 然后按回车 -->
+div → <div></div>
+
+<!-- 输入 'img' 然后按回车 -->
+img → <img  />
+
+<!-- 在 <div 后输入 'class' 然后按回车 -->
+<div class → <div class=""></div>
+```
+
 ## 技术实现
 
 ### 原生功能
-- CSS：通过 `@codemirror/lang-css` 包的 `cssCompletionSource` 提供
-- JavaScript：通过 `@codemirror/lang-javascript` 包提供完整的补全功能
+- **HTML**：通过 `@codemirror/lang-html` 包的 `htmlCompletionSource` 提供
+- **CSS**：通过 `@codemirror/lang-css` 包的 `cssCompletionSource` 提供
+- **JavaScript**：通过 `@codemirror/lang-javascript` 包提供完整的补全功能
 
 ### 自定义功能
-- CSS：通过 `customCssCompletionSource` 提供语法符号补全
-- JavaScript：通过 `jsSnippetCompletionSource` 提供代码片段补全
+- **HTML**：通过 `customHtmlCompletionSource` 提供智能标签和属性补全
+- **HTML代码片段**：通过 `htmlSnippetCompletionSource` 提供代码片段补全
+- **JavaScript**：通过 `jsSnippetCompletionSource` 提供代码片段补全
 - 使用正则表达式匹配不同的语法模式
 - 与原生补全功能结合使用，不重复实现
 
 ### 集成方式
 ```typescript
+// HTML 自动补全
+export const htmlAutocomplete = autocompletion({
+  override: [customHtmlCompletionSource, htmlSnippetCompletionSource, htmlCompletionSource]
+});
+
 // CSS 自动补全
 export const cssAutocomplete = autocompletion({
-  override: [customCssCompletionSource, cssCompletionSource]
+  override: [cssCompletionSource]
 });
 
 // JavaScript 自动补全
@@ -399,18 +585,23 @@ export const jsAutocomplete = autocompletion({
 
 ## 优势
 
-1. **不重复实现**：只补充CodeMirror原生没有的功能
-2. **完美集成**：与原生补全功能无缝结合
-3. **智能上下文**：根据代码上下文提供相关补全
-4. **性能优化**：避免重复的补全逻辑
-5. **维护简单**：代码结构清晰，易于维护
-6. **代码片段**：提供实用的代码片段，提高开发效率
+1. **智能标签补全**：支持输入部分标签名，按回车补全完整标签
+2. **智能属性补全**：在标签内提供常用属性补全
+3. **光标定位优化**：补全后光标定位在合适位置
+4. **不重复实现**：只补充CodeMirror原生没有的功能
+5. **完美集成**：与原生补全功能无缝结合
+6. **智能上下文**：根据代码上下文提供相关补全
+7. **性能优化**：避免重复的补全逻辑
+8. **维护简单**：代码结构清晰，易于维护
+9. **代码片段**：提供实用的代码片段，提高开发效率
+10. **回车键支持**：原生支持回车键补全选择
 
 ## 总结
 
-本项目的自动补全功能 = **CodeMirror原生补全** + **自定义语法补全** + **代码片段补全**
+本项目的自动补全功能 = **CodeMirror原生补全** + **自定义智能标签补全** + **自定义代码片段补全**
 
-- **CodeMirror原生**：提供完整的JavaScript关键字、对象、方法、属性补全
-- **自定义CSS补全**：提供大括号、冒号、分号、单位等语法补全
-- **代码片段补全**：提供实用的代码片段，提高开发效率
-- **完美结合**：提供最完整的代码编辑体验 
+- **CodeMirror原生**：提供完整的HTML、CSS、JavaScript关键字、对象、方法、属性补全
+- **自定义智能标签补全**：支持输入部分标签名，按回车补全完整标签
+- **自定义代码片段**：提供实用的代码片段，提高开发效率
+- **完美结合**：提供最完整的代码编辑体验
+- **回车键支持**：所有补全功能都支持回车键选择 

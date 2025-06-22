@@ -1,5 +1,7 @@
 import * as Babel from "@babel/standalone";
 import { parse } from "@vue/compiler-sfc";
+import * as sass from 'sass';
+import * as less from 'less';
 
 // Configure Babel for React/JSX
 // Removed Babel.registerPreset call
@@ -18,7 +20,7 @@ export const compileTypeScript = async (code: string): Promise<CompilationResult
       const result = ts.transpileModule(code, {
         compilerOptions: {
           module: ts.ModuleKind.ESNext,
-          target: ts.ScriptTarget.ES2018,
+          target: ts.ScriptTarget.ES2020,
           jsx: ts.JsxEmit.Preserve,
           strict: false,
           esModuleInterop: true,
@@ -199,6 +201,38 @@ export const compileJsFramework = async (code: string, language: 'js' | 'react' 
     return {
       code: code,
       error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+};
+
+// 添加CSS编译功能
+// 添加CSS编译功能
+export const compileCssFramework = async (code: string, language: 'css' | 'scss' | 'less'): Promise<CompilationResult> => {
+  try {
+    // 普通CSS不需要编译
+    if (language === 'css') {
+      return { code };
+    }
+    
+    let compiledCode: string;
+    
+    if (language === 'scss') {
+      const result = sass.compileString(code);
+      compiledCode = result.css;
+    } else if (language === 'less') {
+      const result = await less.render(code);
+      compiledCode = result.css;
+    } else {
+      // 未知语言，返回原始代码
+      return { code };
+    }
+    
+    return { code: compiledCode };
+  } catch (error) {
+    console.error(`Error compiling ${language}:`, error);
+    return {
+      code, // 出错时返回原始代码
+      error: error instanceof Error ? error.message : 'Unknown CSS compilation error'
     };
   }
 };

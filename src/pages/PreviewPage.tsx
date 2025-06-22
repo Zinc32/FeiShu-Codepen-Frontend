@@ -3,9 +3,7 @@ import { useParams } from 'react-router-dom';
 import { getPen, Pen } from '../services/penService';
 import Preview from '../components/Preview';
 import ReadOnlyEditor from '../components/ReadOnlyEditor';
-import * as sass from 'sass';
-import * as less from 'less';
-import { compileJsFramework, loadTypeScriptCompiler } from '../services/compilerService';
+import { compileJsFramework, loadTypeScriptCompiler, compileCssFramework } from '../services/compilerService';
 import Split from 'react-split';
 import { Global } from '@emotion/react';
 import {
@@ -27,25 +25,9 @@ const PreviewPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [compiledCss, setCompiledCss] = useState('');
     const [compiledJs, setCompiledJs] = useState('');
+    const [tsCompilerLoaded, setTSCompilerLoaded] = useState(false);
 
-    // 编译 CSS 预处理器代码
-    const compileCss = async (code: string, language: 'css' | 'scss' | 'less') => {
-        try {
-            if (language === 'scss') {
-                const result = sass.compileString(code);
-                return result.css;
-            } else if (language === 'less') {
-                const result = await less.render(code);
-                return result.css;
-            }
-            return code;
-        } catch (error) {
-            console.error(`Error compiling ${language}:`, error);
-            return code;
-        }
-    };
-
-    // 编译 JavaScript 框架代码 ，使用complierService中共享的编译服务
+    // 编译 JavaScript 框架代码，使用compilerService中共享的编译服务
     const compileJs = async (code: string, language: 'js' | 'react' | 'vue' | 'ts') => {
         try {
             const result = await compileJsFramework(code, language);
@@ -56,28 +38,70 @@ const PreviewPage: React.FC = () => {
         }
     };
 
+    // 编译CSS、SCSS、LESS，使用complierService中共享的编译服务
+    const compileCss = async (code: string, language: 'css' | 'scss' | 'less') => {
+        try {
+            const result = await compileCssFramework(code, language);
+            return result.code;
+        } catch (error) {
+            console.error(`Error compiling ${language}:`, error);
+            return code;
+        }
+    };
+
     // 加载 TypeScript 编译器
     useEffect(() => {
-        loadTypeScriptCompiler().catch(error => {
-            console.error('Failed to load TypeScript compiler:', error);
-        });
+        loadTypeScriptCompiler()
+            .then(() => {
+                console.log('TypeScript compiler loaded successfully');
+                setTSCompilerLoaded(true);
+            })
+            .catch(error => {
+                console.error('Failed to load TypeScript compiler:', error);
+                // 即使加载失败，也设置为true，避免无限等待
+                setTSCompilerLoaded(true);
+            });
     }, []);
 
+    // 处理代码编译的函数
+    const processCodeCompilation = useCallback(async (penData: Pen) => {
+        try {
+            const cssLanguage = penData.cssLanguage || 'css';
+            const jsLanguage = penData.jsLanguage || 'js';
+            
+            // 编译CSS（不需要等待TypeScript编译器）
+            const compiledCssResult = await compileCss(penData.css, cssLanguage);
+            setCompiledCss(compiledCssResult);
+            
+            // 对于TypeScript，需要等待编译器加载完成
+            if (jsLanguage === 'ts' && !tsCompilerLoaded) {
+                console.log('Waiting for TypeScript compiler to load...');
+                return; // 等待编译器加载
+            }
+            
+            // 编译JavaScript/TypeScript
+            const compiledJsResult = await compileJs(penData.js, jsLanguage);
+            setCompiledJs(compiledJsResult);
+        } catch (error) {
+            console.error('Error during code compilation:', error);
+            setError('代码编译失败');
+        }
+    }, [tsCompilerLoaded]);
+
+    // 获取Pen数据
     useEffect(() => {
         const fetchPen = async () => {
+            if (!id) return;
+            
             try {
-                const data = await getPen(id!);
+                setLoading(true);
+                setError(null);
+                
+                const data = await getPen(id);
                 setPen(data);
                 
-                // 编译CSS和JS代码
-                const cssLanguage = data.cssLanguage || 'css';
-                const jsLanguage = data.jsLanguage || 'js';
-                
-                const compiledCssResult = await compileCss(data.css, cssLanguage);
-                const compiledJsResult = await compileJs(data.js, jsLanguage);
-                
-                setCompiledCss(compiledCssResult);
-                setCompiledJs(compiledJsResult);
+                // 处理代码编译
+                await processCodeCompilation(data);
             } catch (err) {
                 setError('无法加载代码片段');
                 console.error('Error fetching pen:', err);
@@ -86,10 +110,15 @@ const PreviewPage: React.FC = () => {
             }
         };
 
-        if (id) {
-            fetchPen();
+        fetchPen();
+    }, [id, processCodeCompilation]);
+
+    // 当TypeScript编译器加载完成后，重新处理代码编译
+    useEffect(() => {
+        if (tsCompilerLoaded && pen) {
+            processCodeCompilation(pen);
         }
-    }, [id]);
+    }, [tsCompilerLoaded, pen, processCodeCompilation]);
 
     if (loading) {
         return (

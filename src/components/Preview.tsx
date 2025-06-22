@@ -53,6 +53,15 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
         `;
       }
 
+      // 转义JavaScript代码，避免模板字符串中的特殊字符问题
+      const escapedJs = js
+        .replace(/\\/g, '\\\\')
+        .replace(/`/g, '\\`')
+        .replace(/\$/g, '\\$')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t');
+
       const content = `
         <!DOCTYPE html>
         <html>
@@ -77,10 +86,13 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
                   // TypeScript代码处理
                   if (typeof ts !== 'undefined') {
                     try {
-                      const result = ts.transpileModule(\`${js}\`, {
+                      const jsCode = \`${escapedJs}\`;
+                      console.log('TypeScript compilation input:', jsCode);
+                      
+                      const result = ts.transpileModule(jsCode, {
                         compilerOptions: {
                           module: ts.ModuleKind.ESNext,
-                          target: ts.ScriptTarget.ES2018,
+                          target: ts.ScriptTarget.ES2020,
                           jsx: ts.JsxEmit.Preserve,
                           strict: false,
                           esModuleInterop: true,
@@ -88,19 +100,42 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
                           skipLibCheck: true
                         }
                       });
+                      
+                      console.log('TypeScript compilation result:', result);
+                      
+                      if (result.diagnostics && result.diagnostics.length > 0) {
+                        const errors = result.diagnostics.map(d => d.messageText).join('\\n');
+                        throw new Error('TypeScript compilation errors:\\n' + errors);
+                      }
+                      
+                      console.log('Executing compiled code:', result.outputText);
                       eval(result.outputText);
                     } catch (tsError) {
                       console.error('TypeScript compilation error:', tsError);
-                      document.body.innerHTML += '<div style="color: red; padding: 20px; font-family: monospace;">TypeScript Error: ' + tsError.message + '</div>';
+                      const errorDiv = document.createElement('div');
+                      errorDiv.style.cssText = 'color: red; padding: 20px; font-family: monospace; background: #ffe6e6; border: 1px solid #ff9999; margin: 10px; border-radius: 4px; white-space: pre-wrap;';
+                      errorDiv.innerHTML = '<strong>TypeScript Error:</strong><br>' + tsError.message.replace(/\\n/g, '<br>');
+                      document.body.appendChild(errorDiv);
                     }
                   } else {
-                    // 如果没有TypeScript编译器，直接执行代码
-                    ${js}
+                    // 如果没有TypeScript编译器，显示错误信息
+                    const errorDiv = document.createElement('div');
+                    errorDiv.style.cssText = 'color: red; padding: 20px; font-family: monospace; background: #ffe6e6; border: 1px solid #ff9999; margin: 10px; border-radius: 4px;';
+                    errorDiv.innerHTML = '<strong>Error:</strong> TypeScript compiler not loaded';
+                    document.body.appendChild(errorDiv);
                   }
-                ` : js}
+                ` : `
+                  // 普通JavaScript代码执行
+                  const jsCode = \`${escapedJs}\`;
+                  console.log('JavaScript execution input:', jsCode);
+                  eval(jsCode);
+                `}
               } catch (error) {
                 console.error('Preview script error:', error);
-                document.body.innerHTML += '<div style="color: red; padding: 20px; font-family: monospace;">Error: ' + error.message + '</div>';
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = 'color: red; padding: 20px; font-family: monospace; background: #ffe6e6; border: 1px solid #ff9999; margin: 10px; border-radius: 4px; white-space: pre-wrap;';
+                errorDiv.innerHTML = '<strong>Runtime Error:</strong><br>' + error.message.replace(/\\n/g, '<br>');
+                document.body.appendChild(errorDiv);
               }
             </script>
           </body>

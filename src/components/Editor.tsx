@@ -10,12 +10,10 @@ import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language'
 import { createPen, updatePen, getUserPens, getPen, deletePen, Pen, PenData } from '../services/penService';
 import Preview from './Preview'; // Import the Preview component
 import UserNavbar from './UserNavbar';
-import * as sass from 'sass';
-import * as less from 'less';
 import Split from 'react-split';
 import { Global } from '@emotion/react';
 import { useAuth } from '../contexts/AuthContext';
-import { compileJsFramework, loadTypeScriptCompiler, CompilationResult } from '../services/compilerService';
+import { compileJsFramework, loadTypeScriptCompiler, compileCssFramework, CompilationResult } from '../services/compilerService';
 import {
     PageContainer,
     Container,
@@ -37,7 +35,7 @@ import {
     Overlay,
     Toast
 } from '../styles/editorStyles';
-import { htmlAutocomplete, cssAutocomplete, jsAutocomplete } from '../services/autocompleteService';
+import { htmlAutocomplete, cssAutocomplete, jsAutocomplete, bracketMatchingExtension, closeBracketsExtension } from '../services/autocompleteService';
 
 // 创建编辑器的辅助函数
 const createEditor = (
@@ -68,6 +66,8 @@ const createEditor = (
         ]),
         history(),
         syntaxHighlighting(defaultHighlightStyle),
+        bracketMatchingExtension,
+        closeBracketsExtension,
         // 确保选择功能正常工作和字体优化
         EditorView.theme({
             '&.cm-focused .cm-selectionBackground': {
@@ -112,10 +112,12 @@ const createEditor = (
             autocompleteExt || [],
             // 监听编辑器变化，在非程序性更新时同步到React state
             EditorView.updateListener.of((update) => {
-                if (update.docChanged && !isUpdatingFromState) {
-                    // 简化逻辑：如果不是程序性更新，就认为是用户输入
-                    const newContent = update.state.doc.toString();
-                    setCode(newContent);
+                if (update.docChanged) {
+                    // 使用setTimeout来确保在下一个事件循环中执行，避免在更新过程中触发状态变化
+                    setTimeout(() => {
+                        const newContent = update.state.doc.toString();
+                        setCode(newContent);
+                    }, 0);
                 }
             })
         ]
@@ -156,6 +158,7 @@ const Editor: React.FC = () => {
     const [compiledCss, setCompiledCss] = useState('');
     const [compiledJs, setCompiledJs] = useState('');
     const [jsCompilationError, setJsCompilationError] = useState<string>('');
+    const [tsCompilerLoaded, setTSCompilerLoaded] = useState(false);
 
     // 添加一个标志来跟踪是否是程序性更新
     const [isUpdatingFromState, setIsUpdatingFromState] = useState(false);
@@ -283,48 +286,54 @@ const Editor: React.FC = () => {
         if (!htmlElement || !cssElement || !jsElement) return;
 
         // Destroy existing editors before creating new ones
-        if (htmlEditor) htmlEditor.destroy();
-        if (cssEditor) cssEditor.destroy();
-        if (jsEditor) jsEditor.destroy();
+        if (htmlEditor) {
+            htmlEditor.destroy();
+            setHtmlEditor(null);
+        }
+        if (cssEditor) {
+            cssEditor.destroy();
+            setCssEditor(null);
+        }
+        if (jsEditor) {
+            jsEditor.destroy();
+            setJsEditor(null);
+        }
 
         // 清空容器
         htmlElement.innerHTML = '';
         cssElement.innerHTML = '';
         jsElement.innerHTML = '';
 
-        let newHtmlEditor: EditorView | null = null;
-        let newCssEditor: EditorView | null = null;
-        let newJsEditor: EditorView | null = null;
+        // 设置标志，表示即将进行程序性更新
+        setIsUpdatingFromState(true);
 
-        if (htmlElement) {
-            newHtmlEditor = createEditor(htmlElement, html(), setHtmlEditor, setHtmlCode, htmlCode, isUpdatingFromState, htmlAutocomplete);
-        }
-        if (cssElement) {
-            newCssEditor = createEditor(cssElement, css(), setCssEditor, setCssCode, cssCode, isUpdatingFromState, cssAutocomplete);
-        }
-        if (jsElement) {
-            const jsExtension =
-                jsLanguage === 'ts' || jsLanguage === 'react'
-                    ? javascript({ typescript: true })
-                    : javascript();
-            newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, isUpdatingFromState, jsAutocomplete);
-        }
+        // 创建新编辑器
+        const newHtmlEditor = createEditor(htmlElement, html(), setHtmlEditor, setHtmlCode, htmlCode, true, htmlAutocomplete);
+        const newCssEditor = createEditor(cssElement, css(), setCssEditor, setCssCode, cssCode, true, cssAutocomplete);
+        
+        const jsExtension = jsLanguage === 'ts' || jsLanguage === 'react'
+            ? javascript({ typescript: true })
+            : javascript();
+        const newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, true, jsAutocomplete);
 
         // 重置重新初始化标志
         setShouldReinitializeEditors(false);
+
+        // 延迟重置isUpdatingFromState标志，确保编辑器完全初始化
+        setTimeout(() => {
+            setIsUpdatingFromState(false);
+        }, 100);
 
         return () => {
             newHtmlEditor?.destroy();
             newCssEditor?.destroy();
             newJsEditor?.destroy();
         };
-    }, [shouldReinitializeEditors, jsLanguage, isPenLoaded]); // 添加isPenLoaded作为依赖
+    }, [shouldReinitializeEditors, jsLanguage, isPenLoaded]); // 移除代码内容依赖，避免无限循环
 
     // 当React state变化时，同步更新编辑器内容（不重建编辑器）
     useEffect(() => {
-        if (htmlEditor && cssEditor && jsEditor && !isUpdatingFromState) {
-            setIsUpdatingFromState(true);
-
+        if (htmlEditor && cssEditor && jsEditor && isUpdatingFromState) {
             const currentHtml = htmlEditor.state.doc.toString();
             const currentCss = cssEditor.state.doc.toString();
             const currentJs = jsEditor.state.doc.toString();
@@ -365,26 +374,15 @@ const Editor: React.FC = () => {
         }
     }, [htmlCode, cssCode, jsCode, htmlEditor, cssEditor, jsEditor, isUpdatingFromState]);
 
-    // 编译 CSS 预处理器代码
-    const compileCss = useCallback(async (code: string, language: 'scss' | 'less') => {
-        try {
-            if (language === 'scss') {
-                const result = sass.compileString(code);
-                return result.css;
-            } else if (language === 'less') {
-                const result = await less.render(code);
-                return result.css;
-            }
-            return code;
-        } catch (error) {
-            console.error(`Error compiling ${language}:`, error);
-            return code;
-        }
-    }, []);
-
     // 编译 JavaScript 框架代码
     const compileJs = useCallback(async (code: string, language: 'js' | 'react' | 'vue' | 'ts') => {
         try {
+            // 对于TypeScript，需要等待编译器加载完成
+            if (language === 'ts' && !tsCompilerLoaded) {
+                console.log('Waiting for TypeScript compiler to load...');
+                return code; // 返回原始代码，等待编译器加载
+            }
+            
             const result = await compileJsFramework(code, language);
             
             if (result.error) {
@@ -399,27 +397,48 @@ const Editor: React.FC = () => {
             setJsCompilationError(error instanceof Error ? error.message : 'Unknown error');
             return code;
         }
-    }, []);
+    }, [tsCompilerLoaded]);
 
     // 当 CSS 代码或语言改变时重新编译
     useEffect(() => {
         if (cssLanguage !== 'css') {
-            compileCss(cssCode, cssLanguage).then(setCompiledCss);
+            compileCssFramework(cssCode, cssLanguage).then(result => {
+                if (result.error) {
+                    console.error('CSS compilation error:', result.error);
+                    setCompiledCss(cssCode); // 出错时使用原始代码
+                } else {
+                    setCompiledCss(result.code);
+                }
+            });
         } else {
             setCompiledCss(cssCode);
         }
-    }, [cssCode, cssLanguage, compileCss]);
+    }, [cssCode, cssLanguage]);
 
     // 当 JS 代码或语言改变时重新编译
     useEffect(() => {
         compileJs(jsCode, jsLanguage).then(setCompiledJs);
     }, [jsCode, jsLanguage, compileJs]);
 
+    // 当TypeScript编译器加载完成后，重新编译代码
+    useEffect(() => {
+        if (tsCompilerLoaded && jsLanguage === 'ts') {
+            compileJs(jsCode, jsLanguage).then(setCompiledJs);
+        }
+    }, [tsCompilerLoaded, jsCode, jsLanguage, compileJs]);
+
     // 加载 TypeScript 编译器
     useEffect(() => {
-        loadTypeScriptCompiler().catch(error => {
-            console.error('Failed to load TypeScript compiler:', error);
-        });
+        loadTypeScriptCompiler()
+            .then(() => {
+                console.log('TypeScript compiler loaded successfully');
+                setTSCompilerLoaded(true);
+            })
+            .catch(error => {
+                console.error('Failed to load TypeScript compiler:', error);
+                // 即使加载失败，也设置为true，避免无限等待
+                setTSCompilerLoaded(true);
+            });
     }, []);
 
     // 检测内容是否有变化
@@ -614,25 +633,37 @@ const Editor: React.FC = () => {
     // 处理CSS语言切换
     const handleCssLanguageChange = (newLanguage: 'css' | 'scss' | 'less') => {
         setCssLanguage(newLanguage);
+        // 标记需要重新初始化编辑器
+        setShouldReinitializeEditors(true);
     };
 
     // 处理JavaScript语言切换
     const handleJsLanguageChange = (newLanguage: 'js' | 'react' | 'vue' | 'ts') => {
-        // console.log("currentLanguage",newLanguage)
         setJsLanguage(newLanguage);
         
-        // 如果是新建状态，更新默认代码
+        // 如果是新建状态且当前代码是默认代码，则更新默认代码
         if (!currentPen) {
-            const defaultJs = newLanguage === 'react' 
-                ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
-                : newLanguage === 'vue'
-                ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
-                : newLanguage === 'ts'
-                ? 'console.log("Hello TypeScript!");'
-                : 'console.log("Hello World");';
+            const currentJs = jsEditor?.state.doc.toString() || jsCode;
+            const isDefaultJs = currentJs === 'console.log("Hello World");' || 
+                               currentJs === 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));' ||
+                               currentJs === 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");' ||
+                               currentJs === 'console.log("Hello TypeScript!");';
             
-            setJsCode(defaultJs);
+            if (isDefaultJs) {
+                const defaultJs = newLanguage === 'react' 
+                    ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
+                    : newLanguage === 'vue'
+                    ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
+                    : newLanguage === 'ts'
+                    ? 'console.log("Hello TypeScript!");'
+                    : 'console.log("Hello World");';
+                
+                setJsCode(defaultJs);
+            }
         }
+        
+        // 标记需要重新初始化编辑器
+        setShouldReinitializeEditors(true);
     };
 
     return (
