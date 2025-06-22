@@ -716,3 +716,15 @@ export const Toast = styled.div`
     }
   }
 `;
+
+export const DebugToggleButton = styled(Button) <{ active?: boolean }>`
+  background: ${props => props.active ? '#4299e1' : '#e2e8f0'};
+  color: ${props => props.active ? 'white' : '#2d3748'};
+  margin-left: 8px;
+  border: 1px solid ${props => props.active ? '#4299e1' : '#d1d5db'};
+  
+  &:hover {
+    background: ${props => props.active ? '#3182ce' : '#cbd5e0'};
+    border-color: ${props => props.active ? '#3182ce' : '#9ca3af'};
+  }
+`;

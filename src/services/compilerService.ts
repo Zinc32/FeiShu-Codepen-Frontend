@@ -9,6 +9,7 @@ import * as less from 'less';
 export interface CompilationResult {
   code: string;
   error?: string;
+  errorDetails?: any; // 原始错误对象，用于详细解析
 }
 
 //提供统一的TypeScript编译功能
@@ -40,7 +41,8 @@ export const compileTypeScript = async (code: string): Promise<CompilationResult
     console.error('TypeScript compilation error:', error);
     return {
       code: code, // 出错时返回原始代码
-      error: error instanceof Error ? error.message : 'Unknown TypeScript compilation error'
+      error: error instanceof Error ? error.message : 'Unknown TypeScript compilation error',
+      errorDetails: error
     };
   }
 };
@@ -86,6 +88,7 @@ export const compileReact = (code: string): CompilationResult => {
       code: "",
       error:
         error instanceof Error ? error.message : "Unknown compilation error",
+      errorDetails: error
     };
   }
 };
@@ -103,6 +106,7 @@ export const compileSFCVue = (code: string): CompilationResult => {
         error: (errors as { message: string }[])
           .map((e: { message: string }) => e.message)
           .join("\n"),
+        errorDetails: errors
       };
     }
 
@@ -159,6 +163,7 @@ export const compileSFCVue = (code: string): CompilationResult => {
       code: "",
       error:
         error instanceof Error ? error.message : "Unknown compilation error",
+      errorDetails: error
     };
   }
 };
@@ -179,7 +184,7 @@ export const compileJavaScript = (code: string): CompilationResult => {
 export const compileJsFramework = async (code: string, language: 'js' | 'react' | 'vue' | 'ts'): Promise<CompilationResult> => {
   try {
     let result: CompilationResult;
-    
+
     switch (language) {
       case 'react':
         result = compileReact(code);
@@ -194,13 +199,14 @@ export const compileJsFramework = async (code: string, language: 'js' | 'react' 
         result = compileJavaScript(code);
         break;
     }
-    
+
     return result;
   } catch (error) {
     console.error(`Error compiling ${language}:`, error);
     return {
       code: code,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
+      errorDetails: error
     };
   }
 };
@@ -213,9 +219,9 @@ export const compileCssFramework = async (code: string, language: 'css' | 'scss'
     if (language === 'css') {
       return { code };
     }
-    
+
     let compiledCode: string;
-    
+
     if (language === 'scss') {
       const result = sass.compileString(code);
       compiledCode = result.css;
@@ -226,13 +232,14 @@ export const compileCssFramework = async (code: string, language: 'css' | 'scss'
       // 未知语言，返回原始代码
       return { code };
     }
-    
+
     return { code: compiledCode };
   } catch (error) {
     console.error(`Error compiling ${language}:`, error);
     return {
       code, // 出错时返回原始代码
-      error: error instanceof Error ? error.message : 'Unknown CSS compilation error'
+      error: error instanceof Error ? error.message : 'Unknown CSS compilation error',
+      errorDetails: error
     };
   }
 };

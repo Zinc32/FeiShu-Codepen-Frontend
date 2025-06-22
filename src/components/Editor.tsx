@@ -9,11 +9,13 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { createPen, updatePen, getUserPens, getPen, deletePen, Pen, PenData } from '../services/penService';
 import Preview from './Preview'; // Import the Preview component
+import DebugPreview from './DebugPreview'; // Import the Debug Preview component
 import UserNavbar from './UserNavbar';
 import Split from 'react-split';
 import { Global } from '@emotion/react';
 import { useAuth } from '../contexts/AuthContext';
 import { compileJsFramework, loadTypeScriptCompiler, compileCssFramework, CompilationResult } from '../services/compilerService';
+import { DebugManager } from '../services/debugService';
 import {
     PageContainer,
     Container,
@@ -33,19 +35,22 @@ import {
     ShareTitle,
     ShareClose,
     Overlay,
-    Toast
+    Toast,
+    DebugToggleButton
 } from '../styles/editorStyles';
 import { htmlAutocomplete, cssAutocomplete, jsAutocomplete, bracketMatchingExtension, closeBracketsExtension } from '../services/autocompleteService';
+import { htmlLint, cssLint, jsLint } from '../services/lintService';
 
 // 创建编辑器的辅助函数
 const createEditor = (
-    element: HTMLElement, 
-    langExtension: Extension, 
-    setEditor: React.Dispatch<React.SetStateAction<EditorView | null>>, 
-    setCode: React.Dispatch<React.SetStateAction<string>>, 
+    element: HTMLElement,
+    langExtension: Extension,
+    setEditor: React.Dispatch<React.SetStateAction<EditorView | null>>,
+    setCode: React.Dispatch<React.SetStateAction<string>>,
     initialContent: string,
     isUpdatingFromState: boolean,
-    autocompleteExt?: Extension
+    autocompleteExt?: Extension,
+    lintExtension?: Extension | Extension[]
 ) => {
     const commonExtensions = [
         lineNumbers({
@@ -110,6 +115,7 @@ const createEditor = (
             ...commonExtensions,
             langExtension,
             autocompleteExt || [],
+            ...(Array.isArray(lintExtension) ? lintExtension : [lintExtension || []]), // 添加传入的lint扩展
             // 监听编辑器变化，在非程序性更新时同步到React state
             EditorView.updateListener.of((update) => {
                 if (update.docChanged) {
@@ -149,6 +155,10 @@ const Editor: React.FC = () => {
     const [showToast, setShowToast] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
 
+    // Debug functionality
+    const [debugEnabled, setDebugEnabled] = useState(false);
+    const debugManagerRef = useRef<DebugManager>(new DebugManager());
+
     // State to hold the content for the preview
     const [htmlCode, setHtmlCode] = useState('<div>Hello World</div>'); // Initialize with default HTML
     const [cssCode, setCssCode] = useState('body { color: blue; }'); // Initialize with default CSS
@@ -160,9 +170,11 @@ const Editor: React.FC = () => {
     const [jsCompilationError, setJsCompilationError] = useState<string>('');
     const [tsCompilerLoaded, setTSCompilerLoaded] = useState(false);
 
+    // 移除错误状态，现在由 CodeMirror lint 自动处理
+
     // 添加一个标志来跟踪是否是程序性更新
     const [isUpdatingFromState, setIsUpdatingFromState] = useState(false);
-    
+
     // 使用ref来跟踪语言变化，避免编辑器初始化时使用过时的内容
     const languageChangeRef = useRef({ cssLanguage, jsLanguage });
     const [shouldReinitializeEditors, setShouldReinitializeEditors] = useState(false);
@@ -183,13 +195,13 @@ const Editor: React.FC = () => {
         setCurrentPen(null);
         const defaultHtml = '<div id="app">Hello World</div>';
         const defaultCss = 'body { color: blue; }';
-        const defaultJs = jsLanguage === 'react' 
+        const defaultJs = jsLanguage === 'react'
             ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
             : jsLanguage === 'vue'
-            ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
-            : jsLanguage === 'ts'
-            ? 'console.log("Hello TypeScript!");'
-            : 'console.log("Hello World");';
+                ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
+                : jsLanguage === 'ts'
+                    ? 'console.log("Hello TypeScript!");'
+                    : 'console.log("Hello World");';
 
         setHtmlCode(defaultHtml);
         setCssCode(defaultCss);
@@ -201,21 +213,21 @@ const Editor: React.FC = () => {
     useEffect(() => {
         if (!currentPen) {
             // 只有在新建状态下才更新默认代码
-            const defaultJs = jsLanguage === 'react' 
+            const defaultJs = jsLanguage === 'react'
                 ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
                 : jsLanguage === 'vue'
-                ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
-                : jsLanguage === 'ts'
-                ? 'console.log("Hello TypeScript!");'
-                : 'console.log("Hello World");';
-            
+                    ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
+                    : jsLanguage === 'ts'
+                        ? 'console.log("Hello TypeScript!");'
+                        : 'console.log("Hello World");';
+
             setJsCode(defaultJs);
         }
     }, [jsLanguage, currentPen]);
 
     // 监听语言变化，标记需要重新初始化编辑器
     useEffect(() => {
-        if (languageChangeRef.current.cssLanguage !== cssLanguage || 
+        if (languageChangeRef.current.cssLanguage !== cssLanguage ||
             languageChangeRef.current.jsLanguage !== jsLanguage) {
             languageChangeRef.current = { cssLanguage, jsLanguage };
             setShouldReinitializeEditors(true);
@@ -232,7 +244,7 @@ const Editor: React.FC = () => {
             setCurrentPen(pen);
             setTitle(pen.title);
 
-            // 仿照下拉选择的逻辑，更新React state
+            // 更新React state，useEffect会自动同步到编辑器
             setHtmlCode(pen.html);
             setCssCode(pen.css);
             setJsCode(pen.js);
@@ -240,7 +252,7 @@ const Editor: React.FC = () => {
             // 加载语言选择（如果保存了的话）
             if (pen.cssLanguage) setCssLanguage(pen.cssLanguage);
             if (pen.jsLanguage) setJsLanguage(pen.jsLanguage);
-            
+
             // 标记Pen已加载完成
             setIsPenLoaded(true);
             // console.log(pen.cssLanguage)
@@ -277,7 +289,7 @@ const Editor: React.FC = () => {
     useEffect(() => {
         // 只有在Pen加载完成后才初始化编辑器
         if (!isPenLoaded) return;
-        
+
         // Initialize editors only once
         const htmlElement = document.getElementById('html-editor');
         const cssElement = document.getElementById('css-editor');
@@ -308,13 +320,13 @@ const Editor: React.FC = () => {
         setIsUpdatingFromState(true);
 
         // 创建新编辑器
-        const newHtmlEditor = createEditor(htmlElement, html(), setHtmlEditor, setHtmlCode, htmlCode, true, htmlAutocomplete);
-        const newCssEditor = createEditor(cssElement, css(), setCssEditor, setCssCode, cssCode, true, cssAutocomplete);
-        
+        const newHtmlEditor = createEditor(htmlElement, html(), setHtmlEditor, setHtmlCode, htmlCode, true, htmlAutocomplete, htmlLint);
+        const newCssEditor = createEditor(cssElement, css(), setCssEditor, setCssCode, cssCode, true, cssAutocomplete, cssLint);
+
         const jsExtension = jsLanguage === 'ts' || jsLanguage === 'react'
             ? javascript({ typescript: true })
             : javascript();
-        const newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, true, jsAutocomplete);
+        const newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, true, jsAutocomplete, jsLint);
 
         // 重置重新初始化标志
         setShouldReinitializeEditors(false);
@@ -333,13 +345,15 @@ const Editor: React.FC = () => {
 
     // 当React state变化时，同步更新编辑器内容（不重建编辑器）
     useEffect(() => {
-        if (htmlEditor && cssEditor && jsEditor && isUpdatingFromState) {
+        // 只有当编辑器都存在，且不是正在更新状态时才同步
+        if (htmlEditor && cssEditor && jsEditor && !isUpdatingFromState) {
             const currentHtml = htmlEditor.state.doc.toString();
             const currentCss = cssEditor.state.doc.toString();
             const currentJs = jsEditor.state.doc.toString();
 
-            // 只有当内容真的不同时才更新
+            // 只有当内容真的不同时才更新（避免重复更新）
             if (currentHtml !== htmlCode) {
+                console.log('Updating HTML editor content');
                 htmlEditor.dispatch({
                     changes: {
                         from: 0,
@@ -350,6 +364,7 @@ const Editor: React.FC = () => {
             }
 
             if (currentCss !== cssCode) {
+                console.log('Updating CSS editor content');
                 cssEditor.dispatch({
                     changes: {
                         from: 0,
@@ -360,6 +375,7 @@ const Editor: React.FC = () => {
             }
 
             if (currentJs !== jsCode) {
+                console.log('Updating JS editor content');
                 jsEditor.dispatch({
                     changes: {
                         from: 0,
@@ -368,9 +384,6 @@ const Editor: React.FC = () => {
                     }
                 });
             }
-
-            // 重置标志
-            setTimeout(() => setIsUpdatingFromState(false), 0);
         }
     }, [htmlCode, cssCode, jsCode, htmlEditor, cssEditor, jsEditor, isUpdatingFromState]);
 
@@ -382,9 +395,9 @@ const Editor: React.FC = () => {
                 console.log('Waiting for TypeScript compiler to load...');
                 return code; // 返回原始代码，等待编译器加载
             }
-            
+
             const result = await compileJsFramework(code, language);
-            
+
             if (result.error) {
                 setJsCompilationError(result.error);
                 return code; // Return original code if compilation fails
@@ -394,10 +407,11 @@ const Editor: React.FC = () => {
             }
         } catch (error) {
             console.error(`Error compiling ${language}:`, error);
-            setJsCompilationError(error instanceof Error ? error.message : 'Unknown error');
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            setJsCompilationError(errorMessage);
             return code;
         }
-    }, [tsCompilerLoaded]);
+    }, [tsCompilerLoaded, jsEditor]);
 
     // 当 CSS 代码或语言改变时重新编译
     useEffect(() => {
@@ -413,7 +427,7 @@ const Editor: React.FC = () => {
         } else {
             setCompiledCss(cssCode);
         }
-    }, [cssCode, cssLanguage]);
+    }, [cssCode, cssLanguage, cssEditor]);
 
     // 当 JS 代码或语言改变时重新编译
     useEffect(() => {
@@ -426,6 +440,8 @@ const Editor: React.FC = () => {
             compileJs(jsCode, jsLanguage).then(setCompiledJs);
         }
     }, [tsCompilerLoaded, jsCode, jsLanguage, compileJs]);
+
+    // 移除错误高亮的useEffect，现在由CodeMirror自动处理
 
     // 加载 TypeScript 编译器
     useEffect(() => {
@@ -445,7 +461,7 @@ const Editor: React.FC = () => {
     const checkForChanges = useCallback(() => {
         if (!currentPen) {
             // 新建状态下，如果内容不是默认内容，则认为有变化
-            const hasChanges = 
+            const hasChanges =
                 htmlCode !== '<div>Hello World</div>' ||
                 cssCode !== 'body { color: blue; }' ||
                 jsCode !== 'console.log("Hello World");' ||
@@ -455,7 +471,7 @@ const Editor: React.FC = () => {
             setHasUnsavedChanges(hasChanges);
         } else {
             // 编辑状态下，比较当前内容与保存的内容
-            const hasChanges = 
+            const hasChanges =
                 htmlCode !== currentPen.html ||
                 cssCode !== currentPen.css ||
                 jsCode !== currentPen.js ||
@@ -597,15 +613,15 @@ const Editor: React.FC = () => {
             setCurrentPen(selectedPen);
             setTitle(selectedPen.title);
 
-            // 只更新React state，useEffect会自动同步到编辑器（就像预览组件）
+            // 更新React state，useEffect会自动同步到编辑器
             setHtmlCode(selectedPen.html);
             setCssCode(selectedPen.css);
             setJsCode(selectedPen.js);
-            
+
             // 恢复保存的语言设置
             if (selectedPen.cssLanguage) setCssLanguage(selectedPen.cssLanguage);
             if (selectedPen.jsLanguage) setJsLanguage(selectedPen.jsLanguage);
-            
+
             setIsPenLoaded(true); // 标记Pen已加载
             setHasUnsavedChanges(false);
         } else {
@@ -640,30 +656,36 @@ const Editor: React.FC = () => {
     // 处理JavaScript语言切换
     const handleJsLanguageChange = (newLanguage: 'js' | 'react' | 'vue' | 'ts') => {
         setJsLanguage(newLanguage);
-        
+
         // 如果是新建状态且当前代码是默认代码，则更新默认代码
         if (!currentPen) {
             const currentJs = jsEditor?.state.doc.toString() || jsCode;
-            const isDefaultJs = currentJs === 'console.log("Hello World");' || 
-                               currentJs === 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));' ||
-                               currentJs === 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");' ||
-                               currentJs === 'console.log("Hello TypeScript!");';
-            
+            const isDefaultJs = currentJs === 'console.log("Hello World");' ||
+                currentJs === 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));' ||
+                currentJs === 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");' ||
+                currentJs === 'console.log("Hello TypeScript!");';
+
             if (isDefaultJs) {
-                const defaultJs = newLanguage === 'react' 
+                const defaultJs = newLanguage === 'react'
                     ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
                     : newLanguage === 'vue'
-                    ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
-                    : newLanguage === 'ts'
-                    ? 'console.log("Hello TypeScript!");'
-                    : 'console.log("Hello World");';
-                
+                        ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
+                        : newLanguage === 'ts'
+                            ? 'console.log("Hello TypeScript!");'
+                            : 'console.log("Hello World");';
+
                 setJsCode(defaultJs);
             }
         }
-        
+
         // 标记需要重新初始化编辑器
         setShouldReinitializeEditors(true);
+    };
+
+    // Debug toggle handler
+    const handleToggleDebug = () => {
+        const newState = debugManagerRef.current.toggle();
+        setDebugEnabled(newState);
     };
 
     return (
@@ -735,6 +757,13 @@ const Editor: React.FC = () => {
                     >
                         {isDeleting ? '🗑️ Deleting...' : '🗑️ Delete'}
                     </DeleteButton>
+                    <DebugToggleButton
+                        active={debugEnabled}
+                        onClick={handleToggleDebug}
+                        title={debugEnabled ? '关闭调试模式' : '开启调试模式'}
+                    >
+                        🐛 {debugEnabled ? 'ON' : 'OFF'}
+                    </DebugToggleButton>
                 </EditorActions>
             </EditorHeader>
             {/* 主内容区：左右分为编辑区和预览区 */}
@@ -776,7 +805,7 @@ const Editor: React.FC = () => {
                             <div id="html-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* CSS 编辑器 */}
-                        <div style={{minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <div style={{
                                 padding: '8px 12px',
                                 height: '32px',
@@ -840,28 +869,28 @@ const Editor: React.FC = () => {
                                     <option value="ts">TS</option>
                                 </LanguageSelect>
                             </div>
-                            {jsCompilationError && (
-                                <div style={{
-                                    padding: '8px 12px',
-                                    backgroundColor: '#ffeaea',
-                                    color: '#d73a49',
-                                    fontSize: '12px',
-                                    borderBottom: '1px solid #f97583'
-                                }}>
-                                    Compilation Error: {jsCompilationError}
-                                </div>
-                            )}
+
                             <div id="js-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                     </Split>
                     {/* 右侧预览区 */}
                     <PreviewContainer>
-                        <Preview 
-                            html={htmlCode} 
-                            css={compiledCss} 
-                            js={compiledJs} 
-                            jsLanguage={jsLanguage}
-                        />
+                        {debugEnabled ? (
+                            <DebugPreview
+                                html={htmlCode}
+                                css={compiledCss}
+                                js={compiledJs}
+                                jsLanguage={jsLanguage}
+                                debugEnabled={debugEnabled}
+                            />
+                        ) : (
+                            <Preview
+                                html={htmlCode}
+                                css={compiledCss}
+                                js={compiledJs}
+                                jsLanguage={jsLanguage}
+                            />
+                        )}
                     </PreviewContainer>
                 </Split>
             </div>

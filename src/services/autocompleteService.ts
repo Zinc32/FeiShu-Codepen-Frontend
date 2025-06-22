@@ -25,17 +25,17 @@ export const htmlTagCompletionSource: CompletionSource = (context: CompletionCon
 
   const line = context.state.doc.lineAt(context.pos);
   const beforeCursor = line.text.slice(0, context.pos - line.from);
-  
+
   // 检查是否在注释中
   const inComment = /<!--.*-->$/.test(beforeCursor);
-  
+
   if (inComment) {
     return null; // 在注释中不提供补全
   }
-  
+
   // 检查是否在标签内（<tag> 或 <tag attr>）
   const inTag = /<[^>]*$/.test(beforeCursor);
-  
+
   if (inTag) {
     // 在标签内提供属性补全，自动添加 ="" 
     const commonAttributes = [
@@ -48,7 +48,7 @@ export const htmlTagCompletionSource: CompletionSource = (context: CompletionCon
       'data-', 'aria-', 'role', 'tabindex', 'accesskey', 'draggable', 'spellcheck',
       'contenteditable', 'translate', 'dir', 'lang', 'xml:lang', 'xml:space'
     ];
-    
+
     const attributeSnippets = commonAttributes.map(attr => {
       if (attr === 'data-' || attr === 'aria-') {
         // 对于data-和aria-属性，提供模板
@@ -65,7 +65,7 @@ export const htmlTagCompletionSource: CompletionSource = (context: CompletionCon
       validFor: /\w*/
     };
   }
-  
+
   // 提供标签补全（使用snippetCompletion）
   const tagSnippets = htmlTags.map(tag => {
     if (selfClosingTags.includes(tag)) {
@@ -76,9 +76,9 @@ export const htmlTagCompletionSource: CompletionSource = (context: CompletionCon
       return snippetCompletion(`<${tag}>\${1}</${tag}>`, { label: tag });
     }
   });
-  
-   // 只提供一些常用的HTML代码片段（CodeMirror原生没有的）
-   const htmlSnippets = [
+
+  // 只提供一些常用的HTML代码片段（CodeMirror原生没有的）
+  const htmlSnippets = [
     // 常用的HTML结构片段
     snippetCompletion('<!DOCTYPE html>\n<html lang="en">\n<head>\n\t<meta charset="UTF-8">\n\t<meta name="viewport" content="width=device-width, initial-scale=1.0">\n\t<title>${1:Document}</title>\n</head>\n<body>\n\t${2}\n</body>\n</html>', { label: 'html5' }),
     snippetCompletion('<meta charset="UTF-8">', { label: 'meta charset' }),
@@ -121,27 +121,27 @@ export const htmlAutocomplete = autocompletion({
 export const cssSnippetCompletionSource: CompletionSource = (context: CompletionContext) => {
   const word = context.matchBefore(/\w*/);
   if (!word || (word.from == word.to && !context.explicit)) return null;
-  
+
   const line = context.state.doc.lineAt(context.pos);
   const beforeCursor = line.text.slice(0, context.pos - line.from);
-  
+
   // 检查是否在注释中
   const inComment = /\/\*.*\*\/$/.test(beforeCursor) || /\/\/.*$/.test(beforeCursor);
-  
+
   if (inComment) {
     return null; // 在注释中不提供补全
   }
-  
+
   // 检查是否在字符串中
   const inString = /["'][^"']*$/.test(beforeCursor);
-  
+
   if (inString) {
     return null; // 在字符串中不提供补全
   }
-  
+
   // 检查是否在属性值中（冒号后面）
   const inPropertyValue = /:\s*[^;]*$/.test(beforeCursor);
-  
+
   // 如果在属性值中，优先提供单位补全
   if (inPropertyValue) {
     // 匹配数字（包括多个数字，如 100, 200, 300）
@@ -169,7 +169,7 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
         { label: 'Hz', insert: 'Hz' },
         { label: 'kHz', insert: 'kHz' }
       ];
-      
+
       return {
         from: context.pos,
         options: units.map(unit => ({
@@ -181,7 +181,7 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
       };
     }
   }
-  
+
   // 常用CSS属性代码片段
   //补全时加上；
   const cssSnippets = [
@@ -209,7 +209,7 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
     snippetCompletion('text-align: ${1};', { label: 'text-align' }),
     snippetCompletion('text-decoration: ${1};', { label: 'text-decoration' }),
     snippetCompletion('text-transform: ${1};', { label: 'text-transform' }),
-    
+
     // Layout相关
     snippetCompletion('display: ${1};', { label: 'display' }),
     snippetCompletion('position: ${1};', { label: 'position' }),
@@ -223,7 +223,7 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
     snippetCompletion('max-height: ${1};', { label: 'max-height' }),
     snippetCompletion('min-width: ${1};', { label: 'min-width' }),
     snippetCompletion('min-height: ${1};', { label: 'min-height' }),
-    
+
     // Margin和Padding
     snippetCompletion('margin: ${1};', { label: 'margin' }),
     snippetCompletion('margin-top: ${1};', { label: 'margin-top' }),
@@ -235,14 +235,14 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
     snippetCompletion('padding-right: ${1};', { label: 'padding-right' }),
     snippetCompletion('padding-bottom: ${1};', { label: 'padding-bottom' }),
     snippetCompletion('padding-left: ${1};', { label: 'padding-left' }),
-    
+
     // Border相关
     snippetCompletion('border: ${1};', { label: 'border' }),
     snippetCompletion('border-width: ${1};', { label: 'border-width' }),
     snippetCompletion('border-style: ${1};', { label: 'border-style' }),
     snippetCompletion('border-color: ${1};', { label: 'border-color' }),
     snippetCompletion('border-radius: ${1};', { label: 'border-radius' }),
-    
+
     // Background相关
     snippetCompletion('background: ${1};', { label: 'background' }),
     snippetCompletion('background-color: ${1};', { label: 'background-color' }),
@@ -250,7 +250,7 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
     snippetCompletion('background-size: ${1};', { label: 'background-size' }),
     snippetCompletion('background-position: ${1};', { label: 'background-position' }),
     snippetCompletion('background-repeat: ${1};', { label: 'background-repeat' }),
-    
+
     // Flexbox
     snippetCompletion('flex: ${1};', { label: 'flex' }),
     snippetCompletion('flex-direction: ${1};', { label: 'flex-direction' }),
@@ -258,28 +258,28 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
     snippetCompletion('justify-content: ${1};', { label: 'justify-content' }),
     snippetCompletion('align-items: ${1};', { label: 'align-items' }),
     snippetCompletion('align-self: ${1};', { label: 'align-self' }),
-    
+
     // Grid
     snippetCompletion('grid-template-columns: ${1};', { label: 'grid-template-columns' }),
     snippetCompletion('grid-template-rows: ${1};', { label: 'grid-template-rows' }),
     snippetCompletion('grid-gap: ${1};', { label: 'grid-gap' }),
     snippetCompletion('grid-column: ${1};', { label: 'grid-column' }),
     snippetCompletion('grid-row: ${1};', { label: 'grid-row' }),
-    
+
     // Transform和Animation
     snippetCompletion('transform: ${1};', { label: 'transform' }),
     snippetCompletion('transition: ${1};', { label: 'transition' }),
     snippetCompletion('animation: ${1};', { label: 'animation' }),
     snippetCompletion('opacity: ${1};', { label: 'opacity' }),
     snippetCompletion('visibility: ${1};', { label: 'visibility' }),
-    
+
     // 常用简写属性
     snippetCompletion('margin: ${1} ${2} ${3} ${4};', { label: 'margin shorthand' }),
     snippetCompletion('padding: ${1} ${2} ${3} ${4};', { label: 'padding shorthand' }),
     snippetCompletion('border: ${1} ${2} ${3};', { label: 'border shorthand' }),
     snippetCompletion('background: ${1} ${2} ${3} ${4};', { label: 'background shorthand' })
   ];
-  
+
   return {
     from: word.from,
     options: cssSnippets,
@@ -298,20 +298,20 @@ export const cssAutocomplete = autocompletion({
 export const jsSnippetCompletionSource: CompletionSource = (context: CompletionContext) => {
   const word = context.matchBefore(/\w*/);
   if (!word || (word.from == word.to && !context.explicit)) return null;
-  
+
   const line = context.state.doc.lineAt(context.pos);
   const beforeCursor = line.text.slice(0, context.pos - line.from);
-  
+
   // 检查是否在字符串中
   const inString = /["'`][^"'`]*$/.test(beforeCursor);
-  
+
   // 检查是否在注释中
   const inComment = /\/\/.*$/.test(beforeCursor) || /\/\*.*\*\/$/.test(beforeCursor);
-  
+
   if (inComment || inString) {
     return null; // 在注释或字符串中不提供补全
   }
-  
+
   // 常用代码片段（CodeMirror原生没有的代码片段）
   const codeSnippets = [
     snippetCompletion('new Promise((resolve, reject) => {\n\t${1}\n});', { label: 'new Promise' }),
@@ -378,7 +378,7 @@ export const jsSnippetCompletionSource: CompletionSource = (context: CompletionC
     snippetCompletion('console.error(${1});', { label: 'console.error' }),
     snippetCompletion('debugger;', { label: 'debugger' })
   ];
-  
+
   return {
     from: word.from,
     options: codeSnippets,
