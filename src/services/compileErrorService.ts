@@ -172,6 +172,32 @@ const findErrorLocation = (code: string, errorMessage: string): { line: number; 
             }
         }
 
+        // 检查是否是大括号未闭合的问题
+        let braceCount = 0;
+        let lastOpenBrace = null;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            for (let j = 0; j < line.length; j++) {
+                const char = line[j];
+                if (char === '{') {
+                    braceCount++;
+                    lastOpenBrace = { line: i + 1, column: j + 1 };
+                } else if (char === '}') {
+                    braceCount--;
+                }
+            }
+        }
+
+        // 如果有未闭合的大括号，优先报告这个错误
+        if (braceCount > 0 && lastOpenBrace) {
+            return {
+                line: lastOpenBrace.line,
+                column: lastOpenBrace.column,
+                message: '大括号未闭合，缺少 }'
+            };
+        }
+
         // 如果不是函数定义错误，则尝试提取具体的错误token
         const tokenMatch = errorMessage.match(/Unexpected token '(.+?)'/);
         if (tokenMatch) {
@@ -189,6 +215,8 @@ const findErrorLocation = (code: string, errorMessage: string): { line: number; 
                         specificMessage = '函数定义语法错误，请检查括号是否正确闭合';
                     } else if (token === '{' && line.includes('function')) {
                         specificMessage = '函数定义语法错误：缺少参数括号 ()';
+                    } else if (token === ')' && braceCount > 0) {
+                        specificMessage = '语法错误：可能是大括号未闭合导致的';
                     }
 
                     return {
@@ -749,38 +777,14 @@ const parseBasicCSSErrors = (code: string): CompileError[] => {
     const errors: CompileError[] = [];
     const lines = code.split('\n');
 
+    // 整体检查括号匹配
+    const bracketErrors = checkCSSBracketMatching(code);
+    errors.push(...bracketErrors);
+
+    // 逐行检查其他语法错误
     lines.forEach((line, index) => {
         const lineNumber = index + 1;
         const trimmedLine = line.trim();
-
-        // 检查括号匹配
-        if (trimmedLine.includes('{') && !trimmedLine.includes('}')) {
-            const openBraces = (trimmedLine.match(/\{/g) || []).length;
-            const closeBraces = (trimmedLine.match(/\}/g) || []).length;
-
-            if (openBraces > closeBraces) {
-                // 检查后续行是否有对应的闭括号
-                let found = false;
-                for (let i = index + 1; i < lines.length; i++) {
-                    if (lines[i].includes('}')) {
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (!found) {
-                    errors.push({
-                        id: `css-syntax-${lineNumber}-${Math.random()}`,
-                        type: 'css',
-                        message: '缺少闭合括号 }',
-                        line: lineNumber,
-                        column: line.indexOf('{') + 1,
-                        severity: 'error',
-                        source: 'css'
-                    });
-                }
-            }
-        }
 
         // 检查分号
         if (trimmedLine.includes(':') && !trimmedLine.includes(';') && !trimmedLine.includes('{') && !trimmedLine.includes('}') && trimmedLine.length > 0) {
@@ -794,6 +798,60 @@ const parseBasicCSSErrors = (code: string): CompileError[] => {
                 source: 'css'
             });
         }
+    });
+
+    return errors;
+};
+
+// 检查CSS括号匹配
+const checkCSSBracketMatching = (code: string): CompileError[] => {
+    const errors: CompileError[] = [];
+    const lines = code.split('\n');
+
+    // 使用栈来跟踪括号匹配
+    const braceStack: Array<{ line: number, column: number }> = [];
+
+    lines.forEach((line, lineIndex) => {
+        const lineNumber = lineIndex + 1;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+
+            if (char === '{') {
+                braceStack.push({
+                    line: lineNumber,
+                    column: i + 1
+                });
+            } else if (char === '}') {
+                if (braceStack.length === 0) {
+                    // 多余的右括号
+                    errors.push({
+                        id: `css-extra-brace-${lineNumber}-${Math.random()}`,
+                        type: 'css',
+                        message: '多余的右括号 }',
+                        line: lineNumber,
+                        column: i + 1,
+                        severity: 'error',
+                        source: 'css'
+                    });
+                } else {
+                    braceStack.pop();
+                }
+            }
+        }
+    });
+
+    // 检查未闭合的左括号
+    braceStack.forEach(brace => {
+        errors.push({
+            id: `css-unclosed-brace-${brace.line}-${Math.random()}`,
+            type: 'css',
+            message: '缺少闭合括号 }',
+            line: brace.line,
+            column: brace.column,
+            severity: 'error',
+            source: 'css'
+        });
     });
 
     return errors;

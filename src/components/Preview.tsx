@@ -40,6 +40,17 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
         `;
       }
 
+      // 检查JavaScript是否有基本语法错误
+      let hasJSError = false;
+      try {
+        if (js.trim()) {
+          new Function(js);
+        }
+      } catch (error) {
+        hasJSError = true;
+        console.error('JavaScript syntax error:', error);
+      }
+
       const content = `
         <!DOCTYPE html>
         <html>
@@ -58,14 +69,7 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
           </head>
           <body>
             ${html}
-            <script>
-              try {
-                ${js}
-              } catch (error) {
-                console.error('Preview script error:', error);
-                document.body.innerHTML += '<div style="color: red; padding: 20px; font-family: monospace;">Error: ' + error.message + '</div>';
-              }
-            </script>
+            ${!hasJSError && js.trim() ? `<script>${js}</script>` : ''}
           </body>
         </html>
       `;
