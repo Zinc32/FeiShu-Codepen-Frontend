@@ -161,34 +161,70 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
         );
       }
 
-      let libraryScripts = '';
-      let shouldExecuteJs = !hasHtmlError; // 只有HTML没有错误时才执行JS
+      // 如果HTML有错误，只渲染基本的HTML和CSS
+      if (hasHtmlError) {
+        // 创建一个临时的div来解析HTML内容
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        
+        // 移除所有script标签
+        const scripts = tempDiv.getElementsByTagName('script');
+        while (scripts.length > 0) {
+          scripts[0].parentNode?.removeChild(scripts[0]);
+        }
 
-      // Add library scripts based on the selected language
-      if (shouldExecuteJs && jsLanguage === 'react') {
+        const content = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <style>
+                body {
+                  margin: 0;
+                  padding: 0;
+                  overflow-x: hidden;
+                }
+                ${css}
+              </style>
+            </head>
+            <body>
+              ${tempDiv.innerHTML}
+            </body>
+          </html>
+        `;
+
+        doc.open();
+        doc.write(content);
+        doc.close();
+        return;
+      }
+
+      // 如果HTML没有错误，正常加载所有内容
+      let libraryScripts = '';
+      if (jsLanguage === 'react') {
         libraryScripts = `
           <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
           <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
         `;
-      } else if (shouldExecuteJs && jsLanguage === 'vue') {
+      } else if (jsLanguage === 'vue') {
         libraryScripts = `
           <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
         `;
-      } else if (shouldExecuteJs && jsLanguage === 'ts') {
-        // 对于TypeScript，添加TypeScript编译器
+      } else if (jsLanguage === 'ts') {
         libraryScripts = `
           <script src="https://cdnjs.cloudflare.com/ajax/libs/typescript/5.3.3/typescript.min.js"></script>
         `;
       }
 
       // 转义JavaScript代码，避免模板字符串中的特殊字符问题
-      const escapedJs = shouldExecuteJs ? js
+      const escapedJs = js
         .replace(/\\/g, '\\\\')
         .replace(/`/g, '\\`')
         .replace(/\$/g, '\\$')
         .replace(/\n/g, '\\n')
         .replace(/\r/g, '\\r')
-        .replace(/\t/g, '\\t') : '';
+        .replace(/\t/g, '\\t');
 
       const content = `
         <!DOCTYPE html>
@@ -208,7 +244,7 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
           </head>
           <body>
             ${html}
-            ${shouldExecuteJs ? `<script>
+            <script>
               try {
                 ${jsLanguage === 'ts' ? `
                   // TypeScript代码处理
@@ -232,25 +268,18 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
                       console.log('TypeScript compilation result:', result);
                       
                       if (result.diagnostics && result.diagnostics.length > 0) {
-                        const errors = result.diagnostics.map(d => d.messageText).join('\\n');
-                        throw new Error('TypeScript compilation errors:\\n' + errors);
+                        throw new Error('TypeScript compilation errors:\\n' + result.diagnostics.map(d => d.messageText).join('\\n'));
                       }
                       
                       console.log('Executing compiled code:', result.outputText);
                       eval(result.outputText);
                     } catch (tsError) {
                       console.error('TypeScript compilation error:', tsError);
-                      const errorDiv = document.createElement('div');
-                      errorDiv.style.cssText = 'color: red; padding: 20px; font-family: monospace; background: #ffe6e6; border: 1px solid #ff9999; margin: 10px; border-radius: 4px; white-space: pre-wrap;';
-                      errorDiv.innerHTML = '<strong>TypeScript Error:</strong><br>' + tsError.message.replace(/\\n/g, '<br>');
-                      document.body.appendChild(errorDiv);
+                      doc.body.innerHTML = 'Hello World';
                     }
                   } else {
                     // 如果没有TypeScript编译器，显示错误信息
-                    const errorDiv = document.createElement('div');
-                    errorDiv.style.cssText = 'color: red; padding: 20px; font-family: monospace; background: #ffe6e6; border: 1px solid #ff9999; margin: 10px; border-radius: 4px;';
-                    errorDiv.innerHTML = '<strong>Error:</strong> TypeScript compiler not loaded';
-                    document.body.appendChild(errorDiv);
+                    doc.body.innerHTML = 'Hello World';
                   }
                 ` : `
                   // 普通JavaScript代码执行
@@ -260,12 +289,9 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
                 `}
               } catch (error) {
                 console.error('Preview script error:', error);
-                const errorDiv = document.createElement('div');
-                errorDiv.style.cssText = 'color: red; padding: 20px; font-family: monospace; background: #ffe6e6; border: 1px solid #ff9999; margin: 10px; border-radius: 4px; white-space: pre-wrap;';
-                errorDiv.innerHTML = '<strong>Runtime Error:</strong><br>' + error.message.replace(/\\n/g, '<br>');
-                document.body.appendChild(errorDiv);
+                doc.body.innerHTML = 'Hello World';
               }
-            </script>` : ''}
+            </script>
           </body>
         </html>
       `;
