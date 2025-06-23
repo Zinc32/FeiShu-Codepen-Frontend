@@ -165,8 +165,8 @@ const Editor: React.FC = () => {
     const [jsCode, setJsCode] = useState('console.log("Hello World");'); // Initialize with default JS
     const [cssLanguage, setCssLanguage] = useState<'css' | 'scss' | 'less'>('css');
     const [jsLanguage, setJsLanguage] = useState<'js' | 'react' | 'vue' | 'ts'>('js');
-    const [compiledCss, setCompiledCss] = useState('');
-    const [compiledJs, setCompiledJs] = useState('');
+    const [compiledCss, setCompiledCss] = useState('body { color: blue; }'); // 初始化为默认CSS
+    const [compiledJs, setCompiledJs] = useState('console.log("Hello World");'); // 初始化为默认JS
     const [jsCompilationError, setJsCompilationError] = useState<string>('');
     const [tsCompilerLoaded, setTSCompilerLoaded] = useState(false);
 
@@ -206,6 +206,11 @@ const Editor: React.FC = () => {
         setHtmlCode(defaultHtml);
         setCssCode(defaultCss);
         setJsCode(defaultJs);
+
+        // 同时初始化编译后的代码
+        setCompiledCss(defaultCss); // CSS默认直接使用
+        setCompiledJs(defaultJs);   // JS默认直接使用
+
         setIsPenLoaded(true); // 标记Pen已初始化
     }, []);
 

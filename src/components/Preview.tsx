@@ -283,7 +283,7 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
       <iframe
         ref={iframeRef}
         title="preview"
-        sandbox="allow-scripts allow-modals allow-pointer-lock allow-downloads" // 移除 allow-same-origin，避免潜在风险，但可能会影响 localStorage 等缓存
+        sandbox="allow-scripts allow-same-origin allow-modals allow-pointer-lock allow-downloads"
         style={{ width: '100%', height: '100%', border: 'none' }}
       />
     </PreviewContainer>
