@@ -2,6 +2,7 @@ import { linter, Diagnostic } from '@codemirror/lint';
 import { Extension, StateField, StateEffect } from '@codemirror/state';
 import { EditorView, Decoration, DecorationSet, WidgetType } from '@codemirror/view';
 import { debounce } from 'lodash';
+import * as Babel from '@babel/standalone';
 
 // 快速修复接口
 interface LintFix {
@@ -231,25 +232,57 @@ function htmlLinter(view: EditorView): EnhancedDiagnostic[] {
         return htmlLintCache.get(cacheKey)!;
     }
 
+    // --- 1. 使用 DOMParser 进行专业的 HTML 语法检查 ---
     try {
-        // 使用 DOMParser 检测 HTML 语法错误
         const parser = new DOMParser();
         const htmlDoc = parser.parseFromString(code, 'text/html');
 
-        // 检查解析错误
-        const parserErrors = htmlDoc.querySelector('parsererror');
-        if (parserErrors) {
-            diagnostics.push({
-                from: 0,
-                to: code.length,
-                severity: 'error',
-                message: 'HTML syntax error detected'
+        // 检查解析错误（parsererror 元素）
+        const parserErrors = htmlDoc.querySelectorAll('parsererror');
+        if (parserErrors.length > 0) {
+            parserErrors.forEach(errorElement => {
+                const errorText = errorElement.textContent || 'HTML 解析错误';
+
+                // 尝试从错误信息中提取行号
+                const lineMatch = errorText.match(/line (\d+)/i);
+                if (lineMatch) {
+                    const lineNumber = parseInt(lineMatch[1], 10);
+                    try {
+                        const lineObj = doc.line(lineNumber);
+                        diagnostics.push({
+                            from: lineObj.from,
+                            to: lineObj.to,
+                            severity: 'error',
+                            message: errorText
+                        });
+                    } catch (lineError) {
+                        // 如果获取行失败，使用默认位置
+                        diagnostics.push({
+                            from: 0,
+                            to: code.length,
+                            severity: 'error',
+                            message: errorText
+                        });
+                    }
+                } else {
+                    // 没有行号信息，标记整个文档
+                    diagnostics.push({
+                        from: 0,
+                        to: code.length,
+                        severity: 'error',
+                        message: errorText
+                    });
+                }
             });
         }
+    } catch (parsingError) {
+        console.warn('HTML parsing error:', parsingError);
+    }
 
-        // 检查基本的标签匹配
+    // --- 2. 自定义 HTML 标签匹配检查 ---
+    try {
         const lines = code.split('\n');
-        const tagStack: Array<{ tag: string, line: number, from: number }> = [];
+        const tagStack: Array<{ tag: string, line: number, pos: number }> = [];
         const selfClosingTags = new Set([
             'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
             'link', 'meta', 'param', 'source', 'track', 'wbr'
@@ -260,7 +293,7 @@ function htmlLinter(view: EditorView): EnhancedDiagnostic[] {
         lines.forEach((line, lineIndex) => {
             const lineStart = currentPos;
 
-            // 查找标签
+            // 更精确的标签匹配正则表达式
             const tagRegex = /<\/?([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g;
             let match;
 
@@ -269,35 +302,52 @@ function htmlLinter(view: EditorView): EnhancedDiagnostic[] {
                 const tagName = match[1].toLowerCase();
                 const tagStart = lineStart + match.index;
                 const tagEnd = tagStart + fullTag.length;
+                const lineNumber = lineIndex + 1;
 
                 if (fullTag.startsWith('</')) {
                     // 结束标签
                     if (tagStack.length === 0) {
-                        diagnostics.push({
-                            from: tagStart,
-                            to: tagEnd,
-                            severity: 'error',
-                            message: `Unexpected closing tag </${tagName}>`
-                        });
+                        try {
+                            const lineObj = doc.line(lineNumber);
+                            const from = lineObj.from + match.index;
+                            const to = lineObj.from + match.index + fullTag.length;
+
+                            diagnostics.push({
+                                from,
+                                to,
+                                severity: 'error',
+                                message: `意外的结束标签 </${tagName}>`
+                            });
+                        } catch (lineError) {
+                            // 忽略行获取错误
+                        }
                     } else {
                         const lastTag = tagStack[tagStack.length - 1];
                         if (lastTag.tag === tagName) {
                             tagStack.pop();
                         } else {
-                            diagnostics.push({
-                                from: tagStart,
-                                to: tagEnd,
-                                severity: 'error',
-                                message: `Mismatched closing tag </${tagName}>, expected </${lastTag.tag}>`
-                            });
+                            try {
+                                const lineObj = doc.line(lineNumber);
+                                const from = lineObj.from + match.index;
+                                const to = lineObj.from + match.index + fullTag.length;
+
+                                diagnostics.push({
+                                    from,
+                                    to,
+                                    severity: 'error',
+                                    message: `标签不匹配：</${tagName}> 应为 </${lastTag.tag}>`
+                                });
+                            } catch (lineError) {
+                                // 忽略行获取错误
+                            }
                         }
                     }
                 } else if (!fullTag.endsWith('/>') && !selfClosingTags.has(tagName)) {
                     // 开始标签（非自闭合）
                     tagStack.push({
                         tag: tagName,
-                        line: lineIndex + 1,
-                        from: tagStart
+                        line: lineNumber,
+                        pos: tagStart
                     });
                 }
             }
@@ -307,12 +357,21 @@ function htmlLinter(view: EditorView): EnhancedDiagnostic[] {
 
         // 检查未闭合的标签
         tagStack.forEach(tag => {
-            diagnostics.push({
-                from: tag.from,
-                to: tag.from + tag.tag.length + 2, // <tagname
-                severity: 'error',
-                message: `Unclosed tag <${tag.tag}>`
-            });
+            try {
+                const lineObj = doc.line(tag.line);
+                const relativePos = tag.pos - lineObj.from;
+                const from = lineObj.from + Math.max(0, Math.min(relativePos, lineObj.length));
+                const to = Math.min(from + tag.tag.length + 2, lineObj.to);
+
+                diagnostics.push({
+                    from,
+                    to,
+                    severity: 'error',
+                    message: `未闭合的标签 <${tag.tag}>`
+                });
+            } catch (lineError) {
+                // 忽略行获取错误
+            }
         });
 
     } catch (error) {
@@ -370,222 +429,129 @@ function cssLinter(view: EditorView): EnhancedDiagnostic[] {
         return cssLintCache.get(cacheKey)!;
     }
 
-    // 注释嵌套检测状态
-    let commentNestLevel = 0;
-
+    // --- 使用浏览器原生 CSS 解析（模仿 CodePen） ---
     try {
-        const lines = code.split('\n');
-        let braceLevel = 0;
-        let inComment = false;
-        let inString = false;
-        let stringChar = '';
-        let currentPos = 0;
-        let inPropertyBlock = false;
-        let pendingSelector = false; // 标记是否有待处理的选择器
-        let pendingSelectorStart = 0; // 记录选择器开始位置
-        let lastLineWasSelector = false; // 记录上一行是否是选择器
-        let lastSelectorLine = ''; // 记录上一行选择器内容
+        // 创建一个临时的 style 元素来测试 CSS 语法
+        const tempStyle = document.createElement('style');
+        tempStyle.textContent = code;
 
-        for (const line of lines) {
-            const lineStart = currentPos;
-            let lineHasOpenBrace = false;
-            let lineHasCloseBrace = false;
-            let lineIsSelector = false;
+        // 将元素添加到 document head 中进行解析
+        document.head.appendChild(tempStyle);
 
-            // 预处理：检查这一行是否包含选择器
-            const trimmedLine = line.trim();
-            if (trimmedLine && !trimmedLine.startsWith('//') && !trimmedLine.startsWith('/*')) {
-                // 检查是否是选择器（包含字母、#、.、[、:、*，但不包含:和{）
-                if (/^[a-zA-Z0-9#.*[>\s+~]+/.test(trimmedLine) || trimmedLine.startsWith('@')) {
-                    lineIsSelector = true;
+        // 检查是否有 CSS 解析错误
+        const sheet = tempStyle.sheet;
+        if (sheet) {
+            // 如果能成功创建样式表，说明语法基本正确
+            // 检查每个规则是否有效
+            try {
+                for (let i = 0; i < sheet.cssRules.length; i++) {
+                    const rule = sheet.cssRules[i];
+                    // 基本的规则验证
+                    if (!rule.cssText) {
+                        console.warn('Invalid CSS rule found');
+                    }
                 }
+            } catch (ruleError) {
+                console.warn('CSS rule access error:', ruleError);
             }
+        }
 
-            for (let i = 0; i < line.length; i++) {
-                const char = line[i];
-                const nextChar = line[i + 1];
-                const charPos = lineStart + i;
+        // 清理临时元素
+        document.head.removeChild(tempStyle);
 
-                // 处理注释
-                if (!inString && char === '/' && nextChar === '*') {
-                    if (inComment) {
-                        commentNestLevel++;
-                        diagnostics.push({
-                            from: charPos,
-                            to: charPos + 2,
-                            severity: 'error',
-                            message: '不允许嵌套注释'
-                        });
+        // 额外的基本语法检查
+        const basicSyntaxCheck = (cssCode: string) => {
+            const lines = cssCode.split('\n');
+            let braceLevel = 0;
+            let inComment = false;
+
+            for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+                const line = lines[lineIndex];
+                let inString = false;
+                let stringChar = '';
+
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    const nextChar = line[i + 1];
+
+                    // 处理注释
+                    if (!inString && char === '/' && nextChar === '*') {
+                        inComment = true;
+                        i++; // 跳过下一个字符
+                        continue;
                     }
-                    inComment = true;
-                    i++;
-                    continue;
-                }
 
-                if (inComment && char === '*' && nextChar === '/') {
-                    if (commentNestLevel > 0) {
-                        commentNestLevel--;
+                    if (inComment && char === '*' && nextChar === '/') {
+                        inComment = false;
+                        i++; // 跳过下一个字符
+                        continue;
                     }
-                    inComment = commentNestLevel > 0;
-                    i++;
-                    continue;
-                }
 
-                if (inComment) continue;
+                    if (inComment) continue;
 
-                // 处理字符串
-                if ((char === '"' || char === "'") && !inString) {
-                    inString = true;
-                    stringChar = char;
-                    continue;
-                }
+                    // 处理字符串
+                    if ((char === '"' || char === "'") && !inString) {
+                        inString = true;
+                        stringChar = char;
+                        continue;
+                    }
 
-                if (inString && char === stringChar) {
-                    inString = false;
-                    stringChar = '';
-                    continue;
-                }
+                    if (inString && char === stringChar) {
+                        inString = false;
+                        stringChar = '';
+                        continue;
+                    }
 
-                if (inString) continue;
+                    if (inString) continue;
 
-                // 检查括号
-                if (char === '{') {
-                    lineHasOpenBrace = true;
-                    const beforeText = line.substring(0, i).trim();
-                    // 确保这是一个CSS选择器或@规则
-                    if (beforeText && (beforeText.includes('@') || /[a-zA-Z#.[]/.test(beforeText))) {
+                    // 检查括号匹配
+                    if (char === '{') {
                         braceLevel++;
-                        inPropertyBlock = true;
-                        pendingSelector = false; // 清除待处理的选择器标记
-                    }
-                } else if (char === '}' && inPropertyBlock) {
-                    lineHasCloseBrace = true;
-                    braceLevel--;
-                    if (braceLevel === 0) {
-                        inPropertyBlock = false;
-                    }
-                    if (braceLevel < 0) {
-                        diagnostics.push({
-                            from: charPos,
-                            to: charPos + 1,
-                            severity: 'error',
-                            message: '意外的右花括号，没有匹配的左花括号'
-                        });
-                        braceLevel = 0;
-                        inPropertyBlock = false;
-                    }
-                }
-            }
+                    } else if (char === '}') {
+                        braceLevel--;
 
-            // 处理选择器和左括号缺失的情况
-            if (lineIsSelector && !lineHasOpenBrace) {
-                if (!pendingSelector) {
-                    pendingSelector = true;
-                    pendingSelectorStart = lineStart;
-                    lastSelectorLine = trimmedLine;
-                } else if (!trimmedLine.includes(':')) {
-                    // 如果已经有待处理的选择器，并且当前行不是属性声明
-                    lastSelectorLine += ' ' + trimmedLine;
-                }
-            } else if (pendingSelector && trimmedLine.includes(':') && !lineHasOpenBrace && !lineHasCloseBrace) {
-                // 发现属性声明但没有左括号
-                diagnostics.push({
-                    from: pendingSelectorStart,
-                    to: pendingSelectorStart + lastSelectorLine.length,
-                    severity: 'error',
-                    message: '选择器缺少左花括号 "{"'
-                });
-                pendingSelector = false;
-            } else if (lineHasOpenBrace) {
-                pendingSelector = false;
-            }
-
-            // 检查属性声明
-            if (!inComment && !inString && trimmedLine && inPropertyBlock) {
-                if (trimmedLine.includes(':')) {
-                    const colonIndex = trimmedLine.indexOf(':');
-                    const beforeColon = trimmedLine.substring(0, colonIndex).trim();
-                    const afterColon = trimmedLine.substring(colonIndex + 1).trim();
-
-                    const isSelector = /[\s>+~\[\]()]/.test(beforeColon);
-                    const isMediaQuery = beforeColon.includes('@');
-                    const isBlockStart = trimmedLine.endsWith('{');
-                    const isBlockEnd = trimmedLine.endsWith('}');
-                    const isPropertyDeclaration = !isSelector && !isMediaQuery && !isBlockStart && !isBlockEnd;
-
-                    if (isPropertyDeclaration) {
-                        const propertyName = beforeColon.replace(/-./g, x => x[1].toUpperCase());
-
-                        // 检查缺少分号
-                        if (!trimmedLine.endsWith(';')) {
+                        if (braceLevel < 0) {
+                            const lineObj = doc.line(lineIndex + 1);
+                            const charPos = lineObj.from + i;
                             diagnostics.push({
-                                from: lineStart + line.lastIndexOf(trimmedLine.charAt(trimmedLine.length - 1)),
-                                to: lineStart + line.length,
+                                from: charPos,
+                                to: charPos + 1,
                                 severity: 'error',
-                                message: '属性声明缺少分号'
+                                message: '意外的右花括号 "}"'
                             });
-                        }
-
-                        // 检查属性值
-                        const validValues = cssValidation[propertyName as keyof typeof cssValidation];
-                        if (validValues) {
-                            const value = afterColon.replace(/;$/, '').trim();
-                            const isNumericWithUnit = /^-?\d*\.?\d+(px|em|rem|%|vh|vw|s|ms)?$/.test(value);
-
-                            if (!isNumericWithUnit && !validValues.includes(value)) {
-                                diagnostics.push({
-                                    from: lineStart + colonIndex + 1,
-                                    to: lineStart + colonIndex + 1 + afterColon.length,
-                                    severity: 'error',
-                                    message: `无效的 ${beforeColon} 值: "${value}". 有效值: ${validValues.join(', ')}`
-                                });
-                            }
+                            braceLevel = 0; // 重置
                         }
                     }
                 }
             }
 
-            currentPos += line.length + 1; // +1 for newline
-            lastLineWasSelector = lineIsSelector && !lineHasOpenBrace;
-        }
-
-        // 检查未闭合的括号
-        if (braceLevel > 0) {
-            let lastOpenBracePos = code.length - 1;
-            for (let i = code.length - 1; i >= 0; i--) {
-                if (code[i] === '{') {
-                    lastOpenBracePos = i;
-                    break;
-                }
+            // 检查未闭合的括号
+            if (braceLevel > 0) {
+                diagnostics.push({
+                    from: cssCode.length - 1,
+                    to: cssCode.length,
+                    severity: 'error',
+                    message: `缺少 ${braceLevel} 个右花括号 "}"`
+                });
             }
+        };
 
-            diagnostics.push({
-                from: lastOpenBracePos,
-                to: lastOpenBracePos + 1,
-                severity: 'error',
-                message: `未闭合的花括号: 缺少 ${braceLevel} 个右花括号 '}' 来匹配嵌套结构`
-            });
-        }
+        basicSyntaxCheck(code);
 
-        // 检查最后一个待处理的选择器
-        if (pendingSelector) {
-            diagnostics.push({
-                from: pendingSelectorStart,
-                to: pendingSelectorStart + lastSelectorLine.length,
-                severity: 'error',
-                message: '选择器缺少左花括号 "{"'
-            });
-        }
+    } catch (error: any) {
+        // 浏览器 CSS 解析错误
+        console.warn('CSS 解析错误:', error);
 
-    } catch (error) {
-        console.warn('Error in CSS linting:', error);
+        // 简单的错误处理，不尝试解析复杂的错误信息
         diagnostics.push({
             from: 0,
-            to: code.length,
+            to: Math.min(50, code.length),
             severity: 'error',
-            message: '解析CSS时发生错误: ' + (error instanceof Error ? error.message : String(error))
+            message: 'CSS 语法错误'
         });
     }
+
+
 
     // 更新缓存
     cssLintCache.set(cacheKey, diagnostics);
@@ -603,71 +569,62 @@ function jsLinter(view: EditorView): Diagnostic[] {
     const doc = view.state.doc;
     const code = doc.toString();
 
+    // 如果代码为空或只是注释，不进行检查
+    const cleanCode = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '').trim();
+    if (!cleanCode) {
+        return diagnostics;
+    }
+
     try {
-        // --- 1. 首先进行基本的语法错误检查 ---
+        // --- 1. 使用 Babel 进行基本语法检查 ---
         try {
-            // 使用 new Function() 来检测基本的语法错误
-            new Function(code);
+            // 使用 Babel 解析代码，只检查基本语法错误
+            Babel.transform(code, {
+                parserOpts: {
+                    strictMode: false,
+                    allowImportExportEverywhere: true,
+                    allowReturnOutsideFunction: true,
+                    allowHashBang: true,
+                    allowAwaitOutsideFunction: true,
+                    allowUndeclaredExports: true,
+                    plugins: ['jsx', 'typescript']
+                },
+                // 不进行任何转换，只解析
+                plugins: []
+            });
         } catch (error: any) {
-            if (error instanceof SyntaxError) {
-                // 尝试解析错误位置
-                let line = 1;
-                let column = 0;
+            // 只报告真正的语法错误
+            if (error && error.loc && error.message) {
+                const lineNumber = error.loc.line;
+                const columnNumber = error.loc.column || 0;
 
-                // 从错误消息中提取位置信息
-                const message = error.message;
+                try {
+                    const lineObj = doc.line(lineNumber);
+                    const from = lineObj.from + Math.min(columnNumber, lineObj.length);
+                    const to = Math.min(from + 10, lineObj.to);
 
-                // 查找行号
-                const lineMatch = message.match(/line (\d+)/i);
-                if (lineMatch) {
-                    line = parseInt(lineMatch[1], 10);
+                    // 清理错误信息
+                    let message = error.message
+                        .replace(/^SyntaxError:\s*/, '')
+                        .replace(/\s*\(\d+:\d+\)$/, '')
+                        .replace(/^Unexpected token.*/, '语法错误：意外的标记')
+                        .replace(/^Missing semicolon.*/, '语法错误：缺少分号')
+                        .replace(/^Unterminated string constant.*/, '语法错误：未闭合的字符串')
+                        .replace(/^Unterminated comment.*/, '语法错误：未闭合的注释');
+
+                    diagnostics.push({
+                        from,
+                        to,
+                        severity: 'error',
+                        message
+                    });
+                } catch (lineError) {
+                    // 忽略行获取错误
                 }
-
-                // 计算错误位置
-                const lines = code.split('\n');
-                let from = 0;
-                for (let i = 0; i < Math.min(line - 1, lines.length - 1); i++) {
-                    from += lines[i].length + 1; // +1 for newline
-                }
-
-                const to = Math.min(from + (lines[line - 1]?.length || 0), code.length);
-
-                diagnostics.push({
-                    from,
-                    to,
-                    severity: 'error',
-                    message: error.message.replace(/^SyntaxError:\s*/, '')
-                });
             }
         }
 
-        // --- 2. 接着进行危险函数/API 的检查 ---
-        const dangerousFunctions = [
-            'eval(', 'new Function(',
-            'document.write(', 'document.cookie',
-            'localStorage', 'sessionStorage',
-            'XMLHttpRequest', 'fetch(', 'WebSocket(',
-            'window.open(', 'location.href',
-            'setTimeout(', 'setInterval(',
-            'Worker', 'SharedWorker',
-            'importScripts',
-            'Blob', 'URL.createObjectURL',
-            'btoa', 'atob',
-            'alert(', 'prompt(', 'confirm('
-        ];
-
-        dangerousFunctions.forEach(func => {
-            let match;
-            const regex = new RegExp(`\\b${func.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g');
-            while ((match = regex.exec(code)) !== null) {
-                diagnostics.push({
-                    from: match.index,
-                    to: match.index + match[0].length,
-                    severity: 'error',
-                    message: `检测到危险函数: "${match[0].replace('(', '')}"。出于安全考虑，此操作不允许。`
-                });
-            }
-        });
+        // 只进行基本的语法检查，不做复杂的静态分析或危险函数检测
     } catch (error: any) {
         // 捕获 linting 工具本身可能抛出的其他错误
         diagnostics.push({
@@ -679,6 +636,22 @@ function jsLinter(view: EditorView): Diagnostic[] {
     }
 
     return diagnostics;
+}
+
+// 修改正则表达式，移除不必要的转义字符
+const propertyRegex = /[a-zA-Z-]+\s*:\s*[^;]+;?/;
+const bracketRegex = /[{}]/;
+const selectorPattern = /[a-zA-Z0-9_-]+(?:[.#][a-zA-Z0-9_-]+)*/;
+
+// CSS 属性验证函数
+function validateCssProperty(property: string): boolean {
+    try {
+        const testDiv = document.createElement('div');
+        const camelCaseProp = property.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+        return camelCaseProp in testDiv.style;
+    } catch {
+        return true; // 如果无法验证，默认返回true
+    }
 }
 
 // 创建增强的 linter，结合 CodeMirror 原生 lint 和自定义错误消息

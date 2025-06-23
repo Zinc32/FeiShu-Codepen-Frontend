@@ -1,20 +1,20 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { EditorView, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, keymap, EditorViewConfig } from '@codemirror/view';
-import { EditorState, Extension, Transaction } from '@codemirror/state';
+import { EditorView, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, keymap } from '@codemirror/view';
+import { EditorState, Extension } from '@codemirror/state';
 import { javascript } from '@codemirror/lang-javascript';
 import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { createPen, updatePen, getUserPens, getPen, deletePen, Pen, PenData } from '../services/penService';
-import Preview from './Preview'; // Import the Preview component
-import DebugPreview from './DebugPreview'; // Import the Debug Preview component
+import Preview from './Preview';
+import DebugPreview from './DebugPreview';
 import UserNavbar from './UserNavbar';
 import Split from 'react-split';
 import { Global } from '@emotion/react';
 import { useAuth } from '../contexts/AuthContext';
-import { compileJsFramework, loadTypeScriptCompiler, compileCssFramework, CompilationResult } from '../services/compilerService';
+import { compileJsFramework, loadTypeScriptCompiler, compileCssFramework } from '../services/compilerService';
 import { DebugManager } from '../services/debugService';
 import {
     PageContainer,
@@ -170,8 +170,6 @@ const Editor: React.FC = () => {
     const [jsCompilationError, setJsCompilationError] = useState<string>('');
     const [tsCompilerLoaded, setTSCompilerLoaded] = useState(false);
 
-    // 移除错误状态，现在由 CodeMirror lint 自动处理
-
     // 添加一个标志来跟踪是否是程序性更新
     const [isUpdatingFromState, setIsUpdatingFromState] = useState(false);
 
@@ -212,7 +210,7 @@ const Editor: React.FC = () => {
         setCompiledJs(defaultJs);   // JS默认直接使用
 
         setIsPenLoaded(true); // 标记Pen已初始化
-    }, []);
+    }, [jsLanguage]);
 
     // 当语言改变时，如果是新建状态，更新默认代码
     useEffect(() => {
@@ -404,19 +402,15 @@ const Editor: React.FC = () => {
             const result = await compileJsFramework(code, language);
 
             if (result.error) {
-                setJsCompilationError(result.error);
+                console.error('Compilation error:', result.error);
                 return code; // Return original code if compilation fails
-            } else {
-                setJsCompilationError('');
-                return result.code;
             }
+            return result.code;
         } catch (error) {
             console.error(`Error compiling ${language}:`, error);
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            setJsCompilationError(errorMessage);
             return code;
         }
-    }, [tsCompilerLoaded, jsEditor]);
+    }, [tsCompilerLoaded]);
 
     // 当 CSS 代码或语言改变时重新编译
     useEffect(() => {
@@ -692,6 +686,23 @@ const Editor: React.FC = () => {
         const newState = debugManagerRef.current.toggle();
         setDebugEnabled(newState);
     };
+
+    useEffect(() => {
+        const handleEditorChanges = () => {
+            // 编辑器内容变化时的处理逻辑
+            if (htmlEditor && cssEditor && jsEditor) {
+                const newHtmlCode = htmlEditor.state.doc.toString();
+                const newCssCode = cssEditor.state.doc.toString();
+                const newJsCode = jsEditor.state.doc.toString();
+
+                if (newHtmlCode !== htmlCode) setHtmlCode(newHtmlCode);
+                if (newCssCode !== cssCode) setCssCode(newCssCode);
+                if (newJsCode !== jsCode) setJsCode(newJsCode);
+            }
+        };
+
+        handleEditorChanges();
+    }, [htmlEditor, cssEditor, jsEditor]);
 
     return (
         <PageContainer style={{ height: '100vh', minHeight: 0, display: 'flex', flexDirection: 'column' }}>

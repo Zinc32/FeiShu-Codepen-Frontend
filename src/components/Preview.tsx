@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import styled from '@emotion/styled';
-import { compileJsFramework, loadTypeScriptCompiler } from '../services/compilerService';
+import { loadTypeScriptCompiler } from '../services/compilerService';
 import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { Diagnostic } from '@codemirror/lint';
@@ -166,7 +166,7 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
         // 创建一个临时的div来解析HTML内容
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = html;
-        
+
         // 移除所有script标签
         const scripts = tempDiv.getElementsByTagName('script');
         while (scripts.length > 0) {
@@ -217,8 +217,38 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
         `;
       }
 
+      // 清理 JavaScript 代码，移除测试用的注释和危险代码
+      const cleanJs = js
+        // 首先移除多行注释块
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        // 移除包含特定内容的行
+        .split('\n')
+        .filter(line => {
+          const trimmed = line.trim();
+          return !trimmed.includes('错误：') &&
+            !trimmed.includes('// 错误') &&
+            !trimmed.includes('/* 错误') &&
+            !trimmed.includes('Hello World') &&
+            !trimmed.includes('setTimeout("alert') &&
+            !trimmed.includes('setInterval("alert') &&
+            !trimmed.includes('eval("') &&
+            !trimmed.includes("eval('") &&
+            !trimmed.includes('document.write(') &&
+            !trimmed.includes('检测到危险函数') &&
+            !trimmed.includes('检测到限制的函数');
+        })
+        .join('\n')
+        // 移除危险函数调用（在实际执行前先过滤）
+        .replace(/eval\s*\([^)]*\)\s*;?/g, '')
+        .replace(/new\s+Function\s*\([^)]*\)\s*;?/g, '')
+        .replace(/document\.write\s*\([^)]*\)\s*;?/g, '')
+        .replace(/setTimeout\s*\(\s*["'][^"']*["']\s*,\s*\d+\s*\)\s*;?/g, '')
+        .replace(/setInterval\s*\(\s*["'][^"']*["']\s*,\s*\d+\s*\)\s*;?/g, '')
+        .replace(/alert\s*\([^)]*\)\s*;?/g, '')
+        .trim();
+
       // 转义JavaScript代码，避免模板字符串中的特殊字符问题
-      const escapedJs = js
+      const escapedJs = cleanJs
         .replace(/\\/g, '\\\\')
         .replace(/`/g, '\\`')
         .replace(/\$/g, '\\$')
@@ -275,11 +305,10 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
                       eval(result.outputText);
                     } catch (tsError) {
                       console.error('TypeScript compilation error:', tsError);
-                      doc.body.innerHTML = 'Hello World';
+                      // 不显示任何内容，让用户看到编辑器中的错误提示
                     }
                   } else {
-                    // 如果没有TypeScript编译器，显示错误信息
-                    doc.body.innerHTML = 'Hello World';
+                    // 如果没有TypeScript编译器，不显示任何内容
                   }
                 ` : `
                   // 普通JavaScript代码执行
@@ -289,7 +318,7 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
                 `}
               } catch (error) {
                 console.error('Preview script error:', error);
-                doc.body.innerHTML = 'Hello World';
+                // 不显示任何内容，让用户看到编辑器中的错误提示
               }
             </script>
           </body>
