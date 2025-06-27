@@ -38,7 +38,7 @@ import {
     Toast,
     DebugToggleButton
 } from '../styles/editorStyles';
-import { htmlAutocomplete, cssAutocomplete, jsAutocomplete, bracketMatchingExtension, closeBracketsExtension } from '../services/autocompleteService';
+import { htmlAutocomplete, cssAutocomplete,  bracketMatchingExtension, closeBracketsExtension } from '../services/autocompleteService';
 import { htmlLint, cssLint, jsLint } from '../services/lintService';
 
 // 创建编辑器的辅助函数
@@ -210,7 +210,7 @@ const Editor: React.FC = () => {
         setCompiledJs(defaultJs);   // JS默认直接使用
 
         setIsPenLoaded(true); // 标记Pen已初始化
-    }, [jsLanguage]);
+    }, []);//这里不能将jsLanguage添加为依赖项，否则每次切换语言时都会触发页面的重新渲染导致切换失败
 
     // 当语言改变时，如果是新建状态，更新默认代码
     useEffect(() => {
@@ -329,7 +329,7 @@ const Editor: React.FC = () => {
         const jsExtension = jsLanguage === 'ts' || jsLanguage === 'react'
             ? javascript({ typescript: true })
             : javascript();
-        const newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, true, jsAutocomplete, jsLint);
+        const newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, true,  jsLint);
 
         // 重置重新初始化标志
         setShouldReinitializeEditors(false);

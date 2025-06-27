@@ -104,7 +104,7 @@ export const htmlTagCompletionSource: CompletionSource = (context: CompletionCon
 
   return {
     from: word.from,
-    options: tagSnippets,
+    options: [...tagSnippets,...htmlSnippets],
     validFor: /\w*/
   };
 };
@@ -139,154 +139,327 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
     return null; // 在字符串中不提供补全
   }
 
-  // 检查是否在属性值中（冒号后面）
-  const inPropertyValue = /:\s*[^;]*$/.test(beforeCursor);
+  // 检查是否在属性值中（冒号后面）- 改进的属性名识别
+  const propertyValueMatch = beforeCursor.match(/([a-zA-Z-]+(?:-[a-zA-Z-]+)*)\s*:\s*([^;]*)$/);
+  const inPropertyValue = propertyValueMatch !== null;
 
-  // 如果在属性值中，优先提供单位补全
+  // 如果在属性值中，提供精确的属性值补全
   if (inPropertyValue) {
-    // 匹配数字（包括多个数字，如 100, 200, 300）
-    // 使用更精确的匹配，确保匹配到光标位置的数字
-    const numberMatch = beforeCursor.match(/(\d+(?:\.\d+)?)\s*$/);
+    const propertyName = propertyValueMatch[1];
+    const currentValue = propertyValueMatch[2].trim();
+
+    // 改进的数字匹配逻辑，避免重复触发
+    const numberMatch = currentValue.match(/(\d+(?:\.\d+)?)\s*$/);
     if (numberMatch) {
       const number = numberMatch[1];
-      const units = [
-        { label: 'px', insert: 'px' },
-        { label: 'rem', insert: 'rem' },
-        { label: 'em', insert: 'em' },
-        { label: '%', insert: '%' },
-        { label: 'vw', insert: 'vw' },
-        { label: 'vh', insert: 'vh' },
-        { label: 'pt', insert: 'pt' },
-        { label: 'pc', insert: 'pc' },
-        { label: 'in', insert: 'in' },
-        { label: 'cm', insert: 'cm' },
-        { label: 'mm', insert: 'mm' },
-        { label: 'deg', insert: 'deg' },
-        { label: 'rad', insert: 'rad' },
-        { label: 'turn', insert: 'turn' },
-        { label: 's', insert: 's' },
-        { label: 'ms', insert: 'ms' },
-        { label: 'Hz', insert: 'Hz' },
-        { label: 'kHz', insert: 'kHz' }
-      ];
+      // 检查光标后是否已经有单位，避免重复补全
+      const afterCursor = line.text.slice(context.pos - line.from);
+      const hasUnitAfter = /^[a-zA-Z%]+/.test(afterCursor);
+      
+      if (hasUnitAfter) {
+        return null; // 已经有单位了，不需要补全
+      }
+
+      // 根据属性类型提供相应的单位
+      const getUnitsForProperty = (prop: string): string[] => {
+        // 长度相关属性
+        if (['width', 'height', 'margin', 'padding', 'border-width', 'font-size', 'line-height',
+             'top', 'right', 'bottom', 'left', 'min-width', 'max-width', 'min-height', 'max-height',
+             'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+             'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+             'border-radius', 'text-indent', 'letter-spacing', 'word-spacing'].includes(prop)) {
+          return ['px', 'rem', 'em', '%', 'vw', 'vh', 'pt', 'cm', 'mm', 'in'];
+        }
+        // 时间相关属性
+        if (['transition-duration', 'animation-duration', 'animation-delay', 'transition-delay'].includes(prop)) {
+          return ['s', 'ms'];
+        }
+        // 角度相关属性
+        if (['transform', 'rotate', 'skew', 'hue-rotate'].includes(prop)) {
+          return ['deg', 'rad', 'grad', 'turn'];
+        }
+        // 频率相关属性
+        if (['pitch'].includes(prop)) {
+          return ['Hz', 'kHz'];
+        }
+        // 默认长度单位
+        return ['px', 'rem', 'em', '%'];
+      };
+
+      const relevantUnits = getUnitsForProperty(propertyName);
+      const units = relevantUnits.map(unit => ({
+        label: `${number}${unit}`,
+        insert: unit,
+        type: 'unit'
+      }));
 
       return {
         from: context.pos,
         options: units.map(unit => ({
-          label: unit.label, // 只显示单位名称
+          label: unit.label,
           apply: unit.insert,
-          type: 'unit'
+          type: unit.type,
+          boost: 99 // 提高优先级
+        })),
+        validFor: /^$/ // 只在没有后续字符时有效
+      };
+    }
+
+    // 完善的属性值映射表
+    const getPropertyValues = (prop: string): string[] => {
+      const propertyValues: { [key: string]: string[] } = {
+        // 显示和布局
+        'display': ['block', 'inline', 'inline-block', 'flex', 'inline-flex', 'grid', 'inline-grid', 
+                   'table', 'table-cell', 'table-row', 'table-column', 'list-item', 'none'],
+        'position': ['static', 'relative', 'absolute', 'fixed', 'sticky'],
+        'float': ['left', 'right', 'none'],
+        'clear': ['left', 'right', 'both', 'none'],
+        'visibility': ['visible', 'hidden', 'collapse'],
+        'box-sizing': ['content-box', 'border-box'],
+        'overflow': ['visible', 'hidden', 'scroll', 'auto'],
+        'overflow-x': ['visible', 'hidden', 'scroll', 'auto'],
+        'overflow-y': ['visible', 'hidden', 'scroll', 'auto'],
+        'resize': ['none', 'both', 'horizontal', 'vertical'],
+
+        // 文本相关
+        'text-align': ['left', 'right', 'center', 'justify', 'start', 'end'],
+        'text-decoration': ['none', 'underline', 'overline', 'line-through'],
+        'text-decoration-line': ['none', 'underline', 'overline', 'line-through'],
+        'text-decoration-style': ['solid', 'double', 'dotted', 'dashed', 'wavy'],
+        'text-transform': ['none', 'uppercase', 'lowercase', 'capitalize'],
+        'white-space': ['normal', 'nowrap', 'pre', 'pre-wrap', 'pre-line'],
+        'word-wrap': ['normal', 'break-word'],
+        'word-break': ['normal', 'break-all', 'keep-all', 'break-word'],
+        'vertical-align': ['baseline', 'top', 'middle', 'bottom', 'text-top', 'text-bottom', 'sub', 'super'],
+        'direction': ['ltr', 'rtl'],
+        'unicode-bidi': ['normal', 'embed', 'bidi-override'],
+
+        // 字体相关
+        'font-weight': ['normal', 'bold', 'bolder', 'lighter', '100', '200', '300', '400', '500', '600', '700', '800', '900'],
+        'font-style': ['normal', 'italic', 'oblique'],
+        'font-variant': ['normal', 'small-caps'],
+        'font-stretch': ['normal', 'ultra-condensed', 'extra-condensed', 'condensed', 'semi-condensed', 
+                        'semi-expanded', 'expanded', 'extra-expanded', 'ultra-expanded'],
+
+        // 背景相关
+        'background-repeat': ['repeat', 'repeat-x', 'repeat-y', 'no-repeat', 'space', 'round'],
+        'background-size': ['auto', 'cover', 'contain'],
+        'background-position': ['left', 'center', 'right', 'top', 'bottom'],
+        'background-attachment': ['scroll', 'fixed', 'local'],
+        'background-origin': ['padding-box', 'border-box', 'content-box'],
+        'background-clip': ['border-box', 'padding-box', 'content-box', 'text'],
+
+        // 边框相关
+        'border-style': ['none', 'solid', 'dashed', 'dotted', 'double', 'groove', 'ridge', 'inset', 'outset'],
+        'border-top-style': ['none', 'solid', 'dashed', 'dotted', 'double', 'groove', 'ridge', 'inset', 'outset'],
+        'border-right-style': ['none', 'solid', 'dashed', 'dotted', 'double', 'groove', 'ridge', 'inset', 'outset'],
+        'border-bottom-style': ['none', 'solid', 'dashed', 'dotted', 'double', 'groove', 'ridge', 'inset', 'outset'],
+        'border-left-style': ['none', 'solid', 'dashed', 'dotted', 'double', 'groove', 'ridge', 'inset', 'outset'],
+        'border-collapse': ['separate', 'collapse'],
+
+        // Flexbox
+        'flex-direction': ['row', 'row-reverse', 'column', 'column-reverse'],
+        'flex-wrap': ['nowrap', 'wrap', 'wrap-reverse'],
+        'justify-content': ['flex-start', 'flex-end', 'center', 'space-between', 'space-around', 'space-evenly'],
+        'align-items': ['stretch', 'flex-start', 'flex-end', 'center', 'baseline'],
+        'align-content': ['stretch', 'flex-start', 'flex-end', 'center', 'space-between', 'space-around'],
+        'align-self': ['auto', 'stretch', 'flex-start', 'flex-end', 'center', 'baseline'],
+
+                 // Grid
+         'grid-auto-flow': ['row', 'column', 'dense'],
+         'justify-items': ['start', 'end', 'center', 'stretch'],
+         'justify-self': ['auto', 'start', 'end', 'center', 'stretch'],
+
+        // 列表相关
+        'list-style-type': ['disc', 'circle', 'square', 'decimal', 'decimal-leading-zero', 'lower-roman', 
+                           'upper-roman', 'lower-greek', 'lower-latin', 'upper-latin', 'armenian', 'georgian', 'none'],
+        'list-style-position': ['inside', 'outside'],
+
+        // 表格相关
+        'table-layout': ['auto', 'fixed'],
+        'border-spacing': ['separate', 'collapse'],
+        'caption-side': ['top', 'bottom'],
+        'empty-cells': ['show', 'hide'],
+
+        // 变换和动画
+        'transform-style': ['flat', 'preserve-3d'],
+        'transform-origin': ['left', 'center', 'right', 'top', 'bottom'],
+        'backface-visibility': ['visible', 'hidden'],
+        'perspective-origin': ['left', 'center', 'right', 'top', 'bottom'],
+        'animation-direction': ['normal', 'reverse', 'alternate', 'alternate-reverse'],
+        'animation-fill-mode': ['none', 'forwards', 'backwards', 'both'],
+        'animation-play-state': ['running', 'paused'],
+        'animation-timing-function': ['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'step-start', 'step-end'],
+        'transition-timing-function': ['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'step-start', 'step-end'],
+
+        // 用户界面
+        'cursor': ['auto', 'default', 'pointer', 'text', 'wait', 'help', 'move', 'crosshair', 'not-allowed', 
+                  'grab', 'grabbing', 'zoom-in', 'zoom-out', 'copy', 'alias', 'context-menu', 'cell', 
+                  'vertical-text', 'alias', 'progress', 'no-drop', 'col-resize', 'row-resize'],
+        'pointer-events': ['auto', 'none', 'visiblePainted', 'visibleFill', 'visibleStroke', 'visible', 'painted', 'fill', 'stroke', 'all'],
+        'user-select': ['auto', 'text', 'none', 'contain', 'all'],
+
+        // 颜色和透明度
+        'color': ['red', 'blue', 'green', 'black', 'white', 'gray', 'yellow', 'orange', 'purple', 'pink', 
+                 'brown', 'cyan', 'magenta', 'lime', 'navy', 'teal', 'silver', 'transparent', 'currentColor'],
+        'background-color': ['transparent', 'white', 'black', 'red', 'blue', 'green', 'gray', 'yellow', 
+                            'orange', 'purple', 'pink', 'brown', 'cyan', 'magenta', 'lime', 'navy', 'teal', 'silver'],
+        'border-color': ['transparent', 'currentColor', 'red', 'blue', 'green', 'black', 'white', 'gray'],
+
+        // CSS Grid特定属性
+        'grid-template-columns': ['none', 'repeat()', 'minmax()', 'fit-content()', 'auto', 'min-content', 'max-content'],
+        'grid-template-rows': ['none', 'repeat()', 'minmax()', 'fit-content()', 'auto', 'min-content', 'max-content'],
+
+        // 打印相关
+        'page-break-before': ['auto', 'always', 'avoid', 'left', 'right'],
+        'page-break-after': ['auto', 'always', 'avoid', 'left', 'right'],
+        'page-break-inside': ['auto', 'avoid'],
+
+        // 其他常用属性
+        'object-fit': ['fill', 'contain', 'cover', 'none', 'scale-down'],
+        'object-position': ['left', 'center', 'right', 'top', 'bottom'],
+        'mix-blend-mode': ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 
+                          'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 
+                          'saturation', 'color', 'luminosity'],
+        'isolation': ['auto', 'isolate'],
+        'writing-mode': ['horizontal-tb', 'vertical-rl', 'vertical-lr'],
+        'text-orientation': ['mixed', 'upright', 'sideways']
+      };
+
+      return propertyValues[prop] || [];
+    };
+
+    // 获取CSS函数值
+    const getCSSFunctions = (prop: string): string[] => {
+      const functions: { [key: string]: string[] } = {
+        'background-image': ['url()', 'linear-gradient()', 'radial-gradient()', 'repeating-linear-gradient()', 'repeating-radial-gradient()'],
+        'transform': ['translate()', 'translateX()', 'translateY()', 'scale()', 'scaleX()', 'scaleY()', 
+                     'rotate()', 'skew()', 'skewX()', 'skewY()', 'matrix()', 'perspective()'],
+        'filter': ['blur()', 'brightness()', 'contrast()', 'grayscale()', 'hue-rotate()', 'invert()', 
+                  'opacity()', 'saturate()', 'sepia()', 'drop-shadow()'],
+        'color': ['rgb()', 'rgba()', 'hsl()', 'hsla()', 'var()'],
+        'background-color': ['rgb()', 'rgba()', 'hsl()', 'hsla()', 'var()'],
+        'border-color': ['rgb()', 'rgba()', 'hsl()', 'hsla()', 'var()'],
+        'width': ['calc()', 'min()', 'max()', 'clamp()', 'var()'],
+        'height': ['calc()', 'min()', 'max()', 'clamp()', 'var()'],
+        'font-family': ['var()'],
+        'content': ['attr()', 'counter()', 'url()']
+      };
+
+      return functions[prop] || [];
+    };
+
+    // 严格过滤：只返回与当前属性相关的值
+    const specificValues = getPropertyValues(propertyName);
+    const cssFunctions = getCSSFunctions(propertyName);
+    const allRelevantValues = [...specificValues, ...cssFunctions];
+
+    // 根据用户输入进行过滤
+    const filteredValues = allRelevantValues.filter(value => {
+      if (!word.text) return true; // 如果没有输入，显示所有相关值
+      return value.toLowerCase().startsWith(word.text.toLowerCase());
+    });
+
+    if (filteredValues.length > 0) {
+      return {
+        from: word.from,
+        options: filteredValues.map(value => ({
+          label: value,
+          apply: value,
+          type: 'value',
+          boost: specificValues.includes(value) ? 15 : 10 // CSS函数稍低优先级
         })),
         validFor: /\w*/
       };
     }
+
+    // 如果没有找到特定值，且输入较短，不显示任何补全避免干扰
+    if (word.text.length < 2) {
+      return null;
+    }
+
+    // 对于未知属性，只提供最通用的值
+    const fallbackValues = ['auto', 'none', 'inherit', 'initial', 'unset'];
+    const filteredFallback = fallbackValues.filter(value => 
+      value.toLowerCase().startsWith(word.text.toLowerCase())
+    );
+
+    if (filteredFallback.length > 0) {
+      return {
+        from: word.from,
+        options: filteredFallback.map(value => ({
+          label: value,
+          apply: value,
+          type: 'value',
+          boost: 5 // 较低优先级
+        })),
+        validFor: /\w*/
+      };
+    }
+
+    return null; // 完全不匹配时不显示任何选项
   }
 
-  // 常用CSS属性代码片段
-  //补全时加上；
-  const cssSnippets = [
-    // Font相关 - 特殊处理font关键词
-    ...(word.text === 'font' ? [
-      snippetCompletion('font-size: ${1};', { label: 'font-size' }),
-      snippetCompletion('font-weight: ${1};', { label: 'font-weight' }),
-      snippetCompletion('font-family: ${1};', { label: 'font-family' }),
-      snippetCompletion('font-style: ${1};', { label: 'font-style' }),
-      snippetCompletion('font-variant: ${1};', { label: 'font-variant' }),
-      snippetCompletion('font-stretch: ${1};', { label: 'font-stretch' }),
-      snippetCompletion('font-size-adjust: ${1};', { label: 'font-size-adjust' }),
-      snippetCompletion('font: ${1};', { label: 'font shorthand' })
-    ] : [
-      snippetCompletion('font-size: ${1};', { label: 'font-size' }),
-      snippetCompletion('font-weight: ${1};', { label: 'font-weight' }),
-      snippetCompletion('font-family: ${1};', { label: 'font-family' }),
-      snippetCompletion('font-style: ${1};', { label: 'font-style' }),
-      snippetCompletion('font-variant: ${1};', { label: 'font-variant' }),
-      snippetCompletion('font-stretch: ${1};', { label: 'font-stretch' }),
-      snippetCompletion('font-size-adjust: ${1};', { label: 'font-size-adjust' }),
-      snippetCompletion('font: ${1};', { label: 'font shorthand' })
-    ]),
-    snippetCompletion('line-height: ${1};', { label: 'line-height' }),
-    snippetCompletion('text-align: ${1};', { label: 'text-align' }),
-    snippetCompletion('text-decoration: ${1};', { label: 'text-decoration' }),
-    snippetCompletion('text-transform: ${1};', { label: 'text-transform' }),
-
+  // 改进的CSS属性补全，确保所有属性都有分号
+  const cssProperties = [
+    // Font相关
+    'font-size', 'font-weight', 'font-family', 'font-style', 'font-variant',
+    'font-stretch', 'font-size-adjust', 'line-height', 'text-align', 
+    'text-decoration', 'text-transform', 'letter-spacing', 'word-spacing',
+    
     // Layout相关
-    snippetCompletion('display: ${1};', { label: 'display' }),
-    snippetCompletion('position: ${1};', { label: 'position' }),
-    snippetCompletion('top: ${1};', { label: 'top' }),
-    snippetCompletion('right: ${1};', { label: 'right' }),
-    snippetCompletion('bottom: ${1};', { label: 'bottom' }),
-    snippetCompletion('left: ${1};', { label: 'left' }),
-    snippetCompletion('width: ${1};', { label: 'width' }),
-    snippetCompletion('height: ${1};', { label: 'height' }),
-    snippetCompletion('max-width: ${1};', { label: 'max-width' }),
-    snippetCompletion('max-height: ${1};', { label: 'max-height' }),
-    snippetCompletion('min-width: ${1};', { label: 'min-width' }),
-    snippetCompletion('min-height: ${1};', { label: 'min-height' }),
-
+    'display', 'position', 'top', 'right', 'bottom', 'left',
+    'width', 'height', 'max-width', 'max-height', 'min-width', 'min-height',
+    'box-sizing', 'overflow', 'overflow-x', 'overflow-y', 'z-index',
+    
     // Margin和Padding
-    snippetCompletion('margin: ${1};', { label: 'margin' }),
-    snippetCompletion('margin-top: ${1};', { label: 'margin-top' }),
-    snippetCompletion('margin-right: ${1};', { label: 'margin-right' }),
-    snippetCompletion('margin-bottom: ${1};', { label: 'margin-bottom' }),
-    snippetCompletion('margin-left: ${1};', { label: 'margin-left' }),
-    snippetCompletion('padding: ${1};', { label: 'padding' }),
-    snippetCompletion('padding-top: ${1};', { label: 'padding-top' }),
-    snippetCompletion('padding-right: ${1};', { label: 'padding-right' }),
-    snippetCompletion('padding-bottom: ${1};', { label: 'padding-bottom' }),
-    snippetCompletion('padding-left: ${1};', { label: 'padding-left' }),
-
+    'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+    'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+    
     // Border相关
-    snippetCompletion('border: ${1};', { label: 'border' }),
-    snippetCompletion('border-width: ${1};', { label: 'border-width' }),
-    snippetCompletion('border-style: ${1};', { label: 'border-style' }),
-    snippetCompletion('border-color: ${1};', { label: 'border-color' }),
-    snippetCompletion('border-radius: ${1};', { label: 'border-radius' }),
-
+    'border', 'border-width', 'border-style', 'border-color', 'border-radius',
+    'border-top', 'border-right', 'border-bottom', 'border-left',
+    
     // Background相关
-    snippetCompletion('background: ${1};', { label: 'background' }),
-    snippetCompletion('background-color: ${1};', { label: 'background-color' }),
-    snippetCompletion('background-image: ${1};', { label: 'background-image' }),
-    snippetCompletion('background-size: ${1};', { label: 'background-size' }),
-    snippetCompletion('background-position: ${1};', { label: 'background-position' }),
-    snippetCompletion('background-repeat: ${1};', { label: 'background-repeat' }),
-
+    'background', 'background-color', 'background-image', 'background-size',
+    'background-position', 'background-repeat', 'background-attachment',
+    
     // Flexbox
-    snippetCompletion('flex: ${1};', { label: 'flex' }),
-    snippetCompletion('flex-direction: ${1};', { label: 'flex-direction' }),
-    snippetCompletion('flex-wrap: ${1};', { label: 'flex-wrap' }),
-    snippetCompletion('justify-content: ${1};', { label: 'justify-content' }),
-    snippetCompletion('align-items: ${1};', { label: 'align-items' }),
-    snippetCompletion('align-self: ${1};', { label: 'align-self' }),
-
+    'flex', 'flex-direction', 'flex-wrap', 'flex-flow', 'justify-content',
+    'align-items', 'align-content', 'align-self', 'flex-grow', 'flex-shrink',
+    
     // Grid
-    snippetCompletion('grid-template-columns: ${1};', { label: 'grid-template-columns' }),
-    snippetCompletion('grid-template-rows: ${1};', { label: 'grid-template-rows' }),
-    snippetCompletion('grid-gap: ${1};', { label: 'grid-gap' }),
-    snippetCompletion('grid-column: ${1};', { label: 'grid-column' }),
-    snippetCompletion('grid-row: ${1};', { label: 'grid-row' }),
-
+    'grid', 'grid-template', 'grid-template-columns', 'grid-template-rows',
+    'grid-gap', 'grid-column', 'grid-row', 'grid-area',
+    
     // Transform和Animation
-    snippetCompletion('transform: ${1};', { label: 'transform' }),
-    snippetCompletion('transition: ${1};', { label: 'transition' }),
-    snippetCompletion('animation: ${1};', { label: 'animation' }),
-    snippetCompletion('opacity: ${1};', { label: 'opacity' }),
-    snippetCompletion('visibility: ${1};', { label: 'visibility' }),
+    'transform', 'transform-origin', 'transition', 'transition-property',
+    'transition-duration', 'transition-timing-function', 'transition-delay',
+    'animation', 'animation-name', 'animation-duration', 'animation-timing-function',
+    'opacity', 'visibility', 'cursor',
 
-    // 常用简写属性
-    snippetCompletion('margin: ${1} ${2} ${3} ${4};', { label: 'margin shorthand' }),
-    snippetCompletion('padding: ${1} ${2} ${3} ${4};', { label: 'padding shorthand' }),
-    snippetCompletion('border: ${1} ${2} ${3};', { label: 'border shorthand' }),
-    snippetCompletion('background: ${1} ${2} ${3} ${4};', { label: 'background shorthand' })
+    'color','white-space'
   ];
+
+  // 根据输入的字符进行过滤和补全
+  const filteredProperties = cssProperties.filter(prop => 
+    prop.toLowerCase().includes(word.text.toLowerCase())
+  );
+
+  const cssSnippets = filteredProperties.map(prop => 
+    snippetCompletion(`${prop}: \${1};`, { 
+      label: prop,
+      type: 'property',
+      boost: prop.startsWith(word.text) ? 10 : 0 // 前缀匹配优先级更高
+    })
+  );
 
   return {
     from: word.from,
     options: cssSnippets,
-    validFor: /\w*/
+    validFor: /^[\w-]*$/
   };
 };
-
 // CSS 自动补全（使用CodeMirror原生 + 自定义代码片段）
 export const cssAutocomplete = autocompletion({
   override: [cssSnippetCompletionSource, cssCompletionSource],
@@ -294,109 +467,6 @@ export const cssAutocomplete = autocompletion({
   maxRenderedOptions: 50
 });
 
-// JavaScript 代码片段补全源（CodeMirror原生没有的代码片段）
-export const jsSnippetCompletionSource: CompletionSource = (context: CompletionContext) => {
-  const word = context.matchBefore(/\w*/);
-  if (!word || (word.from == word.to && !context.explicit)) return null;
-
-  const line = context.state.doc.lineAt(context.pos);
-  const beforeCursor = line.text.slice(0, context.pos - line.from);
-
-  // 检查是否在字符串中
-  const inString = /["'`][^"'`]*$/.test(beforeCursor);
-
-  // 检查是否在注释中
-  const inComment = /\/\/.*$/.test(beforeCursor) || /\/\*.*\*\/$/.test(beforeCursor);
-
-  if (inComment || inString) {
-    return null; // 在注释或字符串中不提供补全
-  }
-
-  // 常用代码片段（CodeMirror原生没有的代码片段）
-  const codeSnippets = [
-    snippetCompletion('new Promise((resolve, reject) => {\n\t${1}\n});', { label: 'new Promise' }),
-    snippetCompletion('Promise((resolve, reject) => {\n\t${1}\n});', { label: 'Promise' }),
-    snippetCompletion('function ${1:name}(${2:params}) {\n\t${3}\n}', { label: 'function' }),
-    snippetCompletion('(${1:params}) => {\n\t${2}\n}', { label: 'arrow function' }),
-    snippetCompletion('async function ${1:name}(${2:params}) {\n\t${3}\n}', { label: 'async function' }),
-    snippetCompletion('async (${1:params}) => {\n\t${2}\n}', { label: 'async arrow' }),
-    snippetCompletion('function* ${1:name}(${2:params}) {\n\t${3}\n}', { label: 'generator function' }),
-    // 条件语句
-    snippetCompletion('if (${1:condition}) {\n\t${2}\n}', { label: 'if' }),
-    snippetCompletion('if (${1:condition}) {\n\t${2}\n} else {\n\t${3}\n}', { label: 'if else' }),
-    snippetCompletion('else if (${1:condition}) {\n\t${2}\n}', { label: 'else if' }),
-    snippetCompletion('switch (${1:expression}) {\n\tcase ${2:value}:\n\t\t${3}\n\t\tbreak;\n\tdefault:\n\t\t${4}\n}', { label: 'switch' }),
-    // 循环语句
-    snippetCompletion('for (let ${1:i} = 0; ${1:i} < ${2:array}.length; ${1:i}++) {\n\t${3}\n}', { label: 'for' }),
-    snippetCompletion('for (const ${1:item} of ${2:array}) {\n\t${3}\n}', { label: 'for of' }),
-    snippetCompletion('for (const ${1:key} in ${2:object}) {\n\t${3}\n}', { label: 'for in' }),
-    snippetCompletion('while (${1:condition}) {\n\t${2}\n}', { label: 'while' }),
-    snippetCompletion('do {\n\t${1}\n} while (${2:condition});', { label: 'do while' }),
-    // 错误处理
-    snippetCompletion('try {\n\t${1}\n} catch (${2:error}) {\n\t${3}\n}', { label: 'try catch' }),
-    snippetCompletion('try {\n\t${1}\n} finally {\n\t${2}\n}', { label: 'try finally' }),
-    snippetCompletion('throw new Error(${1:message});', { label: 'throw error' }),
-    // 类和对象
-    snippetCompletion('class ${1:ClassName} {\n\tconstructor(${2:params}) {\n\t\t${3}\n\t}\n}', { label: 'class' }),
-    snippetCompletion('class ${1:ClassName} extends ${2:ParentClass} {\n\tconstructor(${3:params}) {\n\t\t${4}\n\t}\n}', { label: 'class extends' }),
-    snippetCompletion('get ${1:propertyName}() {\n\treturn ${2};\n}', { label: 'getter' }),
-    snippetCompletion('set ${1:propertyName}(${2:value}) {\n\t${3}\n}', { label: 'setter' }),
-    snippetCompletion('static ${1:methodName}(${2:params}) {\n\t${3}\n}', { label: 'static method' }),
-    // 模块
-    snippetCompletion('import ${1:module} from \'${2:path}\';', { label: 'import' }),
-    snippetCompletion('import { ${1:name} } from \'${2:path}\';', { label: 'import destructuring' }),
-    snippetCompletion('import * as ${1:alias} from \'${2:path}\';', { label: 'import as' }),
-    snippetCompletion('export default ${1};', { label: 'export default' }),
-    snippetCompletion('export { ${1} };', { label: 'export named' }),
-    // Promise
-    snippetCompletion('Promise.resolve(${1});', { label: 'Promise.resolve' }),
-    snippetCompletion('Promise.reject(${1});', { label: 'Promise.reject' }),
-    // 常用工具函数
-    snippetCompletion('JSON.stringify(${1:object});', { label: 'JSON.stringify' }),
-    snippetCompletion('JSON.parse(${1:jsonString});', { label: 'JSON.parse' }),
-    snippetCompletion('Object.keys(${1:object});', { label: 'Object.keys' }),
-    snippetCompletion('Object.values(${1:object});', { label: 'Object.values' }),
-    snippetCompletion('Object.entries(${1:object});', { label: 'Object.entries' }),
-    snippetCompletion('Array.from(${1:arrayLike});', { label: 'Array.from' }),
-    snippetCompletion('Array.isArray(${1:value});', { label: 'Array.isArray' }),
-    // DOM 操作
-    snippetCompletion('document.getElementById(\'${1:id}\');', { label: 'getElementById' }),
-    snippetCompletion('document.querySelector(\'${1:selector}\');', { label: 'querySelector' }),
-    snippetCompletion('document.querySelectorAll(\'${1:selector}\');', { label: 'querySelectorAll' }),
-    snippetCompletion('${1:element}.addEventListener(\'${2:event}\', (${3:e}) => {\n\t${4}\n});', { label: 'addEventListener' }),
-    // 定时器
-    snippetCompletion('setTimeout(() => {\n\t${1}\n}, ${2:1000});', { label: 'setTimeout' }),
-    snippetCompletion('setInterval(() => {\n\t${1}\n}, ${2:1000});', { label: 'setInterval' }),
-    snippetCompletion('requestAnimationFrame(() => {\n\t${1}\n});', { label: 'requestAnimationFrame' }),
-    // 常用变量声明
-    snippetCompletion('const ${1:obj} = {};', { label: 'const object' }),
-    snippetCompletion('const ${1:arr} = [];', { label: 'const array' }),
-    snippetCompletion('const ${1:map} = new Map();', { label: 'const map' }),
-    snippetCompletion('const ${1:set} = new Set();', { label: 'const set' }),
-    // 常用模式
-    snippetCompletion('console.log(${1});', { label: 'console.log' }),
-    snippetCompletion('console.error(${1});', { label: 'console.error' }),
-    snippetCompletion('debugger;', { label: 'debugger' })
-  ];
-
-  return {
-    from: word.from,
-    options: codeSnippets,
-    validFor: /\w*/
-  };
-};
-
-// JavaScript 自动补全（使用CodeMirror原生 + 自定义代码片段）
-export const jsAutocomplete = autocompletion({
-  override: [jsSnippetCompletionSource],
-  defaultKeymap: true,
-  maxRenderedOptions: 100
-});
-
-// 获取JavaScript语言的补全源，包含原生JavaScript补全和自定义代码片段
-export const jsCompletionSource = javascriptLanguage.data.of({
-  autocomplete: jsAutocomplete
-});
 
 // 导出括号高亮匹配扩展
 export const bracketMatchingExtension = bracketMatching();
