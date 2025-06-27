@@ -217,6 +217,28 @@ export const errorMessageTheme = EditorView.theme({
     }
 });
 
+// HTML 辅助函数：排除脚本、样式标签内容和注释
+function excludeScriptAndStyleContent(html: string): string {
+    try {
+        return html
+            // 替换 HTML 注释为空，避免注释中的标签被误检测
+            .replace(/<!--[\s\S]*?-->/g, '')
+            // 替换 script 标签内容为空，保留标签结构
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, (match) => {
+                const openTag = match.match(/<script[^>]*>/i)?.[0] || '<script>';
+                return openTag + '</script>';
+            })
+            // 替换 style 标签内容为空，保留标签结构
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, (match) => {
+                const openTag = match.match(/<style[^>]*>/i)?.[0] || '<style>';
+                return openTag + '</style>';
+            });
+    } catch (error) {
+        // 如果处理失败，返回原始内容
+        return html;
+    }
+}
+
 // HTML Lint 函数
 // HTML Lint 缓存
 const htmlLintCache = new Map<string, EnhancedDiagnostic[]>();
@@ -281,7 +303,10 @@ function htmlLinter(view: EditorView): EnhancedDiagnostic[] {
 
     // --- 2. 自定义 HTML 标签匹配检查 ---
     try {
-        const lines = code.split('\n');
+        // 预处理：排除脚本和样式标签内容，避免误检测
+        const processedCode = excludeScriptAndStyleContent(code);
+
+        const lines = processedCode.split('\n');
         const tagStack: Array<{ tag: string, line: number, pos: number }> = [];
         const selfClosingTags = new Set([
             'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
@@ -323,7 +348,8 @@ function htmlLinter(view: EditorView): EnhancedDiagnostic[] {
                         }
                     } else {
                         const lastTag = tagStack[tagStack.length - 1];
-                        if (lastTag.tag === tagName) {
+                        // 支持大小写不敏感的标签匹配
+                        if (lastTag.tag.toLowerCase() === tagName.toLowerCase()) {
                             tagStack.pop();
                         } else {
                             try {
@@ -534,6 +560,16 @@ function cssLinter(view: EditorView): EnhancedDiagnostic[] {
                     message: `缺少 ${braceLevel} 个右花括号 "}"`
                 });
             }
+
+            // 检查未闭合的注释
+            if (inComment) {
+                diagnostics.push({
+                    from: cssCode.length - 1,
+                    to: cssCode.length,
+                    severity: 'error',
+                    message: '未闭合的注释 /* ... */'
+                });
+            }
         };
 
         basicSyntaxCheck(code);
@@ -561,6 +597,118 @@ function cssLinter(view: EditorView): EnhancedDiagnostic[] {
     }
 
     return diagnostics;
+}
+
+// 辅助函数：检查指定行是否在字符串或注释中
+function isLineInStringOrComment(lines: string[], lineIndex: number, fullCode: string): boolean {
+    try {
+        // 简单的启发式检查
+        const line = lines[lineIndex];
+
+        // 检查是否在单行注释中
+        if (line.trim().startsWith('//')) {
+            return true;
+        }
+
+        // 检查是否在多行注释或字符串中
+        // 计算到当前行的字符位置
+        let position = 0;
+        for (let i = 0; i < lineIndex; i++) {
+            position += lines[i].length + 1; // +1 for newline
+        }
+
+        // 检查从开头到当前位置的代码
+        const codeUpToLine = fullCode.substring(0, position);
+
+        // 简单的状态跟踪
+        let inSingleQuote = false;
+        let inDoubleQuote = false;
+        let inTemplate = false;
+        let inBlockComment = false;
+        let inLineComment = false;
+
+        for (let i = 0; i < codeUpToLine.length; i++) {
+            const char = codeUpToLine[i];
+            const nextChar = codeUpToLine[i + 1];
+            const prevChar = codeUpToLine[i - 1];
+
+            // 处理换行（重置行注释状态）
+            if (char === '\n') {
+                inLineComment = false;
+                continue;
+            }
+
+            // 如果在行注释中，跳过
+            if (inLineComment) continue;
+
+            // 如果在块注释中
+            if (inBlockComment) {
+                if (char === '*' && nextChar === '/') {
+                    inBlockComment = false;
+                    i++; // 跳过 '/'
+                }
+                continue;
+            }
+
+            // 如果在字符串中
+            if (inSingleQuote) {
+                if (char === "'" && prevChar !== '\\') {
+                    inSingleQuote = false;
+                }
+                continue;
+            }
+
+            if (inDoubleQuote) {
+                if (char === '"' && prevChar !== '\\') {
+                    inDoubleQuote = false;
+                }
+                continue;
+            }
+
+            if (inTemplate) {
+                if (char === '`' && prevChar !== '\\') {
+                    inTemplate = false;
+                }
+                continue;
+            }
+
+            // 检查注释开始
+            if (char === '/' && nextChar === '/') {
+                inLineComment = true;
+                i++; // 跳过第二个 '/'
+                continue;
+            }
+
+            if (char === '/' && nextChar === '*') {
+                inBlockComment = true;
+                i++; // 跳过 '*'
+                continue;
+            }
+
+            // 检查字符串开始
+            if (char === "'") {
+                inSingleQuote = true;
+                continue;
+            }
+
+            if (char === '"') {
+                inDoubleQuote = true;
+                continue;
+            }
+
+            if (char === '`') {
+                inTemplate = true;
+                continue;
+            }
+        }
+
+        // 如果到达目标行时仍在字符串或注释中，返回 true
+        return inSingleQuote || inDoubleQuote || inTemplate || inBlockComment || inLineComment;
+
+    } catch (error) {
+        // 如果检测失败，保守返回 false
+        return false;
+    }
 }
 
 // JavaScript/TypeScript Lint 函数
@@ -595,22 +743,80 @@ function jsLinter(view: EditorView): Diagnostic[] {
         } catch (error: any) {
             // 只报告真正的语法错误
             if (error && error.loc && error.message) {
-                const lineNumber = error.loc.line;
-                const columnNumber = error.loc.column || 0;
+                let lineNumber = error.loc.line;
+                let columnNumber = error.loc.column || 0;
+
+                // 特殊处理：检查是否需要调整错误位置到前面的声明关键字
+                const lines = code.split('\n');
+                const errorLine = lines[lineNumber - 1] || '';
+
+                // 检查当前错误行是否看起来像是由于前面不完整的声明导致的
+                const looksLikeDeclarationError = (
+                    // 错误消息包含声明相关的关键词
+                    error.message.includes('Missing initialiser') ||
+                    error.message.includes('Missing semicolon') ||
+                    error.message.includes('Unexpected identifier') ||
+                    error.message.includes('Unexpected token') ||
+                    error.message.includes('expected') ||
+                    // 或者错误行看起来像是正常的代码（不是声明）
+                    (errorLine.trim().startsWith('console.') ||
+                        errorLine.trim().startsWith('return') ||
+                        errorLine.trim().match(/^[a-zA-Z_$][a-zA-Z0-9_$]*\s*\(/))
+                );
+
+                if (looksLikeDeclarationError) {
+                    // 查找前面的不完整声明关键字
+                    const keywords = ['const', 'let', 'var', 'function', 'class', 'interface', 'type'];
+
+                    let found = false;
+                    for (let i = lineNumber - 2; i >= Math.max(0, lineNumber - 3) && !found; i--) {
+                        const line = lines[i];
+                        const trimmedLine = line.trim();
+
+                        // 检查这一行是否在字符串或注释中
+                        if (isLineInStringOrComment(lines, i, code)) {
+                            continue;
+                        }
+
+                        for (const keyword of keywords) {
+                            // 检查是否是独立的关键字（不完整的声明）
+                            if (trimmedLine === keyword) {
+                                lineNumber = i + 1;
+                                columnNumber = line.indexOf(keyword);
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                }
 
                 try {
                     const lineObj = doc.line(lineNumber);
                     const from = lineObj.from + Math.min(columnNumber, lineObj.length);
                     const to = Math.min(from + 10, lineObj.to);
 
-                    // 清理错误信息
+                    // 清理错误信息，提供更友好的中文提示
                     let message = error.message
                         .replace(/^SyntaxError:\s*/, '')
                         .replace(/\s*\(\d+:\d+\)$/, '')
+                        // 声明相关错误
+                        .replace(/Missing initialiser in const declaration.*/, 'const 声明缺少变量名和初始化值')
+                        .replace(/Missing initialiser in let declaration.*/, 'let 声明缺少变量名')
+                        .replace(/Missing initialiser in var declaration.*/, 'var 声明缺少变量名')
+                        .replace(/Unexpected identifier.*/, '语法错误：意外的标识符')
+                        .replace(/Unexpected reserved word.*/, '语法错误：意外的保留字')
+                        // 函数相关错误
+                        .replace(/Unexpected token, expected.*/, '语法错误：缺少必要的语法元素')
+                        .replace(/Missing function name.*/, '函数声明缺少函数名')
+                        // 通用语法错误
                         .replace(/^Unexpected token.*/, '语法错误：意外的标记')
                         .replace(/^Missing semicolon.*/, '语法错误：缺少分号')
                         .replace(/^Unterminated string constant.*/, '语法错误：未闭合的字符串')
-                        .replace(/^Unterminated comment.*/, '语法错误：未闭合的注释');
+                        .replace(/^Unterminated comment.*/, '语法错误：未闭合的注释')
+                        .replace(/Unexpected end of input.*/, '语法错误：代码意外结束')
+                        // 括号相关错误
+                        .replace(/Expected.*but found.*/, '语法错误：括号或标点符号不匹配')
+                        .replace(/Missing closing.*/, '语法错误：缺少闭合符号');
 
                     diagnostics.push({
                         from,
@@ -652,6 +858,35 @@ function validateCssProperty(property: string): boolean {
     } catch {
         return true; // 如果无法验证，默认返回true
     }
+}
+
+// 安全的错误检测包装器
+function safeErrorDetection<T extends Diagnostic[]>(
+    linterFn: (view: EditorView) => T,
+    fallbackMessage: string = '错误检测器暂时不可用，请稍后重试'
+): (view: EditorView) => T {
+    return (view: EditorView) => {
+        try {
+            const start = performance.now();
+            const result = linterFn(view);
+            const end = performance.now();
+
+            // 性能监控
+            if (end - start > 1000) {
+                console.warn(`Slow error detection (${linterFn.name}):`, end - start, 'ms');
+            }
+
+            return result;
+        } catch (error) {
+            console.warn('Error detection failed:', error);
+            return [{
+                from: 0,
+                to: 0,
+                severity: 'warning',
+                message: fallbackMessage
+            }] as T;
+        }
+    };
 }
 
 // 创建增强的 linter，结合 CodeMirror 原生 lint 和自定义错误消息
