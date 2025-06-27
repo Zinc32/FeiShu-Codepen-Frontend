@@ -5,6 +5,7 @@ import { EditorState, Extension } from '@codemirror/state';
 import { javascript } from '@codemirror/lang-javascript';
 import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
+import { vue } from '@codemirror/lang-vue';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { createPen, updatePen, getUserPens, getPen, deletePen, Pen, PenData } from '../services/penService';
@@ -38,7 +39,16 @@ import {
     Toast,
     DebugToggleButton
 } from '../styles/editorStyles';
-import { htmlAutocomplete, cssAutocomplete,  bracketMatchingExtension, closeBracketsExtension } from '../services/autocompleteService';
+import { 
+    htmlAutocomplete, 
+    cssAutocomplete, 
+    jsAutocomplete,
+    reactAutocomplete,
+    vueAutocomplete,
+    tsAutocomplete,
+    bracketMatchingExtension, 
+    closeBracketsExtension 
+} from '../services/autocompleteService';
 import { htmlLint, cssLint, jsLint } from '../services/lintService';
 
 // 创建编辑器的辅助函数
@@ -326,10 +336,31 @@ const Editor: React.FC = () => {
         const newHtmlEditor = createEditor(htmlElement, html(), setHtmlEditor, setHtmlCode, htmlCode, true, htmlAutocomplete, htmlLint);
         const newCssEditor = createEditor(cssElement, css(), setCssEditor, setCssCode, cssCode, true, cssAutocomplete, cssLint);
 
-        const jsExtension = jsLanguage === 'ts' || jsLanguage === 'react'
-            ? javascript({ typescript: true })
-            : javascript();
-        const newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, true,  jsLint);
+        // 根据JavaScript语言选择对应的扩展和自动补全
+        let jsExtension: Extension;
+        let jsAutocompleteExt: Extension;
+
+        switch (jsLanguage) {
+            case 'react':
+                jsExtension = javascript({ typescript: true });
+                jsAutocompleteExt = reactAutocomplete;
+                break;
+            case 'vue':
+                jsExtension = vue();
+                jsAutocompleteExt = vueAutocomplete;
+                break;
+            case 'ts':
+                jsExtension = javascript({ typescript: true });
+                jsAutocompleteExt = tsAutocomplete;
+                break;
+            case 'js':
+            default:
+                jsExtension = javascript();
+                jsAutocompleteExt = jsAutocomplete;
+                break;
+        }
+
+        const newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, true, jsAutocompleteExt, jsLint);
 
         // 重置重新初始化标志
         setShouldReinitializeEditors(false);

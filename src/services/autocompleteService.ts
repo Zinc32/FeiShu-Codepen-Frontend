@@ -506,4 +506,365 @@ export const closeBracketsExtension = keymap.of([
       return true;
     }
   }
-]); 
+]);
+
+// JavaScript 代码片段补全源
+export const jsSnippetCompletionSource: CompletionSource = (context: CompletionContext) => {
+  const word = context.matchBefore(/\w*/);
+  if (!word || (word.from == word.to && !context.explicit)) return null;
+
+  const line = context.state.doc.lineAt(context.pos);
+  const beforeCursor = line.text.slice(0, context.pos - line.from);
+
+  // 检查是否在注释中
+  const inComment = /\/\*.*\*\/$/.test(beforeCursor) || /\/\/.*$/.test(beforeCursor);
+
+  if (inComment) {
+    return null; // 在注释中不提供补全
+  }
+
+  // 检查是否在字符串中
+  const inString = /["'`][^"'`]*$/.test(beforeCursor);
+
+  if (inString) {
+    return null; // 在字符串中不提供补全
+  }
+
+  // JavaScript 常用代码片段
+  const jsSnippets = [
+    // 函数相关
+    snippetCompletion('function ${1:functionName}(${2:params}) {\n\t${3}\n}', { label: 'function' }),
+    snippetCompletion('const ${1:functionName} = (${2:params}) => {\n\t${3}\n}', { label: 'arrow function' }),
+    snippetCompletion('function* ${1:generatorName}(${2:params}) {\n\t${3}\n}', { label: 'generator function' }),
+    snippetCompletion('async function ${1:functionName}(${2:params}) {\n\t${3}\n}', { label: 'async function' }),
+    snippetCompletion('const ${1:functionName} = async (${2:params}) => {\n\t${3}\n}', { label: 'async arrow function' }),
+    
+    // 控制流
+    snippetCompletion('if (${1:condition}) {\n\t${2}\n}', { label: 'if' }),
+    snippetCompletion('if (${1:condition}) {\n\t${2}\n} else {\n\t${3}\n}', { label: 'if else' }),
+    snippetCompletion('switch (${1:expression}) {\n\tcase ${2:value}:\n\t\t${3}\n\t\tbreak;\n\tdefault:\n\t\t${4}\n}', { label: 'switch' }),
+    snippetCompletion('for (let ${1:i} = 0; ${1:i} < ${2:array}.length; ${1:i}++) {\n\t${3}\n}', { label: 'for loop' }),
+    snippetCompletion('for (const ${1:item} of ${2:array}) {\n\t${3}\n}', { label: 'for of' }),
+    snippetCompletion('for (const ${1:key} in ${2:object}) {\n\t${3}\n}', { label: 'for in' }),
+    snippetCompletion('while (${1:condition}) {\n\t${2}\n}', { label: 'while' }),
+    snippetCompletion('do {\n\t${1}\n} while (${2:condition});', { label: 'do while' }),
+    
+    // 类和对象
+    snippetCompletion('class ${1:ClassName} {\n\tconstructor(${2:params}) {\n\t\t${3}\n\t}\n}', { label: 'class' }),
+    snippetCompletion('class ${1:ClassName} extends ${2:ParentClass} {\n\tconstructor(${3:params}) {\n\t\tsuper(${4});\n\t\t${5}\n\t}\n}', { label: 'class extends' }),
+    snippetCompletion('const ${1:objectName} = {\n\t${2:property}: ${3:value}\n}', { label: 'object' }),
+    
+    // 异步处理
+    snippetCompletion('try {\n\t${1}\n} catch (${2:error}) {\n\t${3}\n}', { label: 'try catch' }),
+    snippetCompletion('try {\n\t${1}\n} catch (${2:error}) {\n\t${3}\n} finally {\n\t${4}\n}', { label: 'try catch finally' }),
+    snippetCompletion('Promise.resolve(${1:value})', { label: 'Promise.resolve' }),
+    snippetCompletion('Promise.reject(${1:error})', { label: 'Promise.reject' }),
+    snippetCompletion('Promise((resolve, reject) => {\n\t${1}\n})', { label: 'Promise' }),
+    snippetCompletion('await ${1:promise}', { label: 'await' }),
+    
+    // 数组和对象方法
+    snippetCompletion('${1:array}.map((${2:item}) => ${3})', { label: 'array map' }),
+    snippetCompletion('${1:array}.filter((${2:item}) => ${3})', { label: 'array filter' }),
+    snippetCompletion('${1:array}.reduce((${2:acc}, ${3:item}) => ${4}, ${5:initialValue})', { label: 'array reduce' }),
+    snippetCompletion('${1:array}.forEach((${2:item}) => ${3})', { label: 'array forEach' }),
+    snippetCompletion('Object.keys(${1:object})', { label: 'Object.keys' }),
+    snippetCompletion('Object.values(${1:object})', { label: 'Object.values' }),
+    snippetCompletion('Object.entries(${1:object})', { label: 'Object.entries' }),
+    
+    // 常用语句
+    snippetCompletion('console.log(${1:message})', { label: 'console.log' }),
+    snippetCompletion('console.error(${1:message})', { label: 'console.error' }),
+    snippetCompletion('console.warn(${1:message})', { label: 'console.warn' }),
+    snippetCompletion('console.table(${1:data})', { label: 'console.table' }),
+    snippetCompletion('return ${1:value}', { label: 'return' }),
+    snippetCompletion('throw new Error(${1:message})', { label: 'throw error' }),
+    snippetCompletion('const ${1:variableName} = ${2:value}', { label: 'const' }),
+    snippetCompletion('let ${1:variableName} = ${2:value}', { label: 'let' }),
+    snippetCompletion('var ${1:variableName} = ${2:value}', { label: 'var' }),
+    
+    // 模块相关
+    snippetCompletion('import ${1:module} from \'${2:path}\'', { label: 'import' }),
+    snippetCompletion('import { ${1:export} } from \'${2:path}\'', { label: 'import named' }),
+    snippetCompletion('import * as ${1:alias} from \'${2:path}\'', { label: 'import all' }),
+    snippetCompletion('export default ${1:value}', { label: 'export default' }),
+    snippetCompletion('export { ${1:export} }', { label: 'export named' }),
+    snippetCompletion('export const ${1:name} = ${2:value}', { label: 'export const' }),
+    
+    // 模板字符串
+    snippetCompletion('`${1:content}`', { label: 'template literal' }),
+    snippetCompletion('`${1:content} ${2:${expression}}`', { label: 'template with expression' })
+  ];
+
+  return {
+    from: word.from,
+    options: jsSnippets,
+    validFor: /\w*/
+  };
+};
+
+// React 代码片段补全源
+export const reactSnippetCompletionSource: CompletionSource = (context: CompletionContext) => {
+  const word = context.matchBefore(/\w*/);
+  if (!word || (word.from == word.to && !context.explicit)) return null;
+
+  const line = context.state.doc.lineAt(context.pos);
+  const beforeCursor = line.text.slice(0, context.pos - line.from);
+
+  // 检查是否在注释或字符串中
+  const inComment = /\/\*.*\*\/$/.test(beforeCursor) || /\/\/.*$/.test(beforeCursor);
+  const inString = /["'`][^"'`]*$/.test(beforeCursor);
+
+  if (inComment || inString) {
+    return null;
+  }
+
+  // React 常用代码片段
+  const reactSnippets = [
+    // 组件定义
+    snippetCompletion('function ${1:ComponentName}(${2:props}) {\n\treturn (\n\t\t${3}\n\t);\n}', { label: 'react function component' }),
+    snippetCompletion('const ${1:ComponentName} = (${2:props}) => {\n\treturn (\n\t\t${3}\n\t);\n}', { label: 'react arrow component' }),
+    snippetCompletion('class ${1:ComponentName} extends React.Component {\n\trender() {\n\t\treturn (\n\t\t\t${2}\n\t\t);\n\t}\n}', { label: 'react class component' }),
+    snippetCompletion('const ${1:ComponentName} = React.memo((${2:props}) => {\n\treturn (\n\t\t${3}\n\t);\n});', { label: 'react memo component' }),
+    
+    // Hooks
+    snippetCompletion('const [${1:state}, set${1/(.*)/${1:/capitalize}/}] = useState(${2:initialValue})', { label: 'useState' }),
+    snippetCompletion('useEffect(() => {\n\t${1}\n}, [${2:dependencies}])', { label: 'useEffect' }),
+    snippetCompletion('useEffect(() => {\n\t${1}\n}, [])', { label: 'useEffect empty deps' }),
+    snippetCompletion('const ${1:ref} = useRef(${2:initialValue})', { label: 'useRef' }),
+    snippetCompletion('const ${1:callback} = useCallback((${2:params}) => {\n\t${3}\n}, [${4:dependencies}])', { label: 'useCallback' }),
+    snippetCompletion('const ${1:memoizedValue} = useMemo(() => {\n\t${2}\n}, [${3:dependencies}])', { label: 'useMemo' }),
+    snippetCompletion('const ${1:context} = useContext(${2:Context})', { label: 'useContext' }),
+    snippetCompletion('const ${1:reducer} = useReducer(${2:reducer}, ${3:initialState})', { label: 'useReducer' }),
+    
+    // JSX 元素
+    snippetCompletion('<${1:div}>\n\t${2}\n</${1:div}>', { label: 'jsx element' }),
+    snippetCompletion('<${1:Component} ${2:props}>\n\t${3}\n</${1:Component}>', { label: 'jsx component' }),
+    snippetCompletion('<${1:div} className="${2:className}">\n\t${3}\n</${1:div}>', { label: 'jsx with className' }),
+    snippetCompletion('<${1:div} style={{ ${2:styles} }}>\n\t${3}\n</${1:div}>', { label: 'jsx with style' }),
+    snippetCompletion('<${1:input} type="${2:text}" value={${3:value}} onChange={${4:handleChange}} />', { label: 'jsx input' }),
+    snippetCompletion('<${1:button} onClick={${2:handleClick}}>\n\t${3}\n</${1:button}>', { label: 'jsx button' }),
+    
+    // 条件渲染
+    snippetCompletion('{${1:condition} && (\n\t${2}\n)}', { label: 'conditional render' }),
+    snippetCompletion('{${1:condition} ? (\n\t${2}\n) : (\n\t${3}\n)}', { label: 'ternary render' }),
+    snippetCompletion('{${1:items}.map((${2:item}, ${3:index}) => (\n\t<${4:div} key={${3:index}}>\n\t\t${5}\n\t</${4:div}>\n))}', { label: 'map render' }),
+    
+    // 事件处理
+    snippetCompletion('const handle${1:Event} = (${2:event}) => {\n\t${3}\n}', { label: 'event handler' }),
+    snippetCompletion('const handle${1:Event} = useCallback((${2:event}) => {\n\t${3}\n}, [${4:dependencies}])', { label: 'event handler with callback' }),
+    
+    // 导入导出
+    snippetCompletion('import React from \'react\'', { label: 'import React' }),
+    snippetCompletion('import React, { ${1:hook} } from \'react\'', { label: 'import React with hook' }),
+    snippetCompletion('export default ${1:ComponentName}', { label: 'export default component' }),
+    
+    // 常用模式
+    snippetCompletion('const ${1:ComponentName} = ({ ${2:props} }) => {\n\t${3}\n}', { label: 'destructured props' }),
+    snippetCompletion('const { ${1:prop1}, ${2:prop2} } = ${3:props}', { label: 'destructure props' }),
+    snippetCompletion('const { ${1:state1}, ${2:state2} } = ${3:state}', { label: 'destructure state' })
+  ];
+
+  return {
+    from: word.from,
+    options: reactSnippets,
+    validFor: /\w*/
+  };
+};
+
+// Vue 代码片段补全源
+export const vueSnippetCompletionSource: CompletionSource = (context: CompletionContext) => {
+  const word = context.matchBefore(/\w*/);
+  if (!word || (word.from == word.to && !context.explicit)) return null;
+
+  const line = context.state.doc.lineAt(context.pos);
+  const beforeCursor = line.text.slice(0, context.pos - line.from);
+
+  // 检查是否在注释或字符串中
+  const inComment = /\/\*.*\*\/$/.test(beforeCursor) || /\/\/.*$/.test(beforeCursor);
+  const inString = /["'`][^"'`]*$/.test(beforeCursor);
+
+  if (inComment || inString) {
+    return null;
+  }
+
+  // Vue 常用代码片段
+  const vueSnippets = [
+    // Vue 3 Composition API
+    snippetCompletion('const { createApp } = Vue', { label: 'import createApp' }),
+    snippetCompletion('const app = createApp({\n\t${1}\n})', { label: 'createApp' }),
+    snippetCompletion('app.mount(\'${1:#app}\')', { label: 'app mount' }),
+    snippetCompletion('const { ref } = Vue', { label: 'import ref' }),
+    snippetCompletion('const { reactive } = Vue', { label: 'import reactive' }),
+    snippetCompletion('const { computed } = Vue', { label: 'import computed' }),
+    snippetCompletion('const { watch } = Vue', { label: 'import watch' }),
+    snippetCompletion('const { onMounted } = Vue', { label: 'import onMounted' }),
+    snippetCompletion('const { onUnmounted } = Vue', { label: 'import onUnmounted' }),
+    
+    // 响应式数据
+    snippetCompletion('const ${1:count} = ref(${2:0})', { label: 'ref' }),
+    snippetCompletion('const ${1:state} = reactive({\n\t${2:property}: ${3:value}\n})', { label: 'reactive' }),
+    snippetCompletion('const ${1:computedValue} = computed(() => {\n\t${2}\n})', { label: 'computed' }),
+    
+    // 生命周期
+    snippetCompletion('onMounted(() => {\n\t${1}\n})', { label: 'onMounted' }),
+    snippetCompletion('onUnmounted(() => {\n\t${1}\n})', { label: 'onUnmounted' }),
+    snippetCompletion('onUpdated(() => {\n\t${1}\n})', { label: 'onUpdated' }),
+    snippetCompletion('onBeforeMount(() => {\n\t${1}\n})', { label: 'onBeforeMount' }),
+    snippetCompletion('onBeforeUnmount(() => {\n\t${1}\n})', { label: 'onBeforeUnmount' }),
+    
+    // 监听器
+    snippetCompletion('watch(${1:source}, (${2:newValue}, ${3:oldValue}) => {\n\t${4}\n})', { label: 'watch' }),
+    snippetCompletion('watchEffect(() => {\n\t${1}\n})', { label: 'watchEffect' }),
+    
+    // 组件定义
+    snippetCompletion('const component = {\n\tsetup() {\n\t\t${1}\n\t\treturn {\n\t\t\t${2}\n\t\t}\n\t},\n\ttemplate: `${3}`\n}', { label: 'vue component' }),
+    snippetCompletion('const component = {\n\tsetup() {\n\t\t${1}\n\t},\n\ttemplate: `${2}`\n}', { label: 'vue component simple' }),
+    
+    // 模板语法
+    snippetCompletion('{{ ${1:expression} }}', { label: 'template expression' }),
+    snippetCompletion('v-if="${1:condition}"', { label: 'v-if' }),
+    snippetCompletion('v-show="${1:condition}"', { label: 'v-show' }),
+    snippetCompletion('v-for="${1:item} in ${2:items}"', { label: 'v-for' }),
+    snippetCompletion('v-for="(${1:item}, ${2:index}) in ${3:items}"', { label: 'v-for with index' }),
+    snippetCompletion('v-bind:${1:prop}="${2:value}"', { label: 'v-bind' }),
+    snippetCompletion(':${1:prop}="${2:value}"', { label: 'v-bind shorthand' }),
+    snippetCompletion('v-on:${1:click}="${2:handler}"', { label: 'v-on' }),
+    snippetCompletion('@${1:click}="${2:handler}"', { label: 'v-on shorthand' }),
+    snippetCompletion('v-model="${1:value}"', { label: 'v-model' }),
+    
+    // 事件处理
+    snippetCompletion('const handle${1:Event} = () => {\n\t${2}\n}', { label: 'event handler' }),
+    snippetCompletion('const handle${1:Event} = (${2:event}) => {\n\t${3}\n}', { label: 'event handler with event' }),
+    
+    // 常用方法
+    snippetCompletion('const ${1:methodName} = () => {\n\t${2}\n}', { label: 'method' }),
+    snippetCompletion('const ${1:methodName} = async () => {\n\t${2}\n}', { label: 'async method' }),
+    
+    // 响应式更新
+    snippetCompletion('${1:count}.value = ${2:newValue}', { label: 'update ref' }),
+    snippetCompletion('${1:state}.${2:property} = ${3:newValue}', { label: 'update reactive' })
+  ];
+
+  return {
+    from: word.from,
+    options: vueSnippets,
+    validFor: /\w*/
+  };
+};
+
+// TypeScript 代码片段补全源
+export const tsSnippetCompletionSource: CompletionSource = (context: CompletionContext) => {
+  const word = context.matchBefore(/\w*/);
+  if (!word || (word.from == word.to && !context.explicit)) return null;
+
+  const line = context.state.doc.lineAt(context.pos);
+  const beforeCursor = line.text.slice(0, context.pos - line.from);
+
+  // 检查是否在注释或字符串中
+  const inComment = /\/\*.*\*\/$/.test(beforeCursor) || /\/\/.*$/.test(beforeCursor);
+  const inString = /["'`][^"'`]*$/.test(beforeCursor);
+
+  if (inComment || inString) {
+    return null;
+  }
+
+  // TypeScript 常用代码片段
+  const tsSnippets = [
+    // 类型定义
+    snippetCompletion('type ${1:TypeName} = ${2:string}', { label: 'type alias' }),
+    snippetCompletion('interface ${1:InterfaceName} {\n\t${2:property}: ${3:string}\n}', { label: 'interface' }),
+    snippetCompletion('interface ${1:InterfaceName} extends ${2:BaseInterface} {\n\t${3:property}: ${4:string}\n}', { label: 'interface extends' }),
+    snippetCompletion('enum ${1:EnumName} {\n\t${2:VALUE} = ${3:value}\n}', { label: 'enum' }),
+    snippetCompletion('const enum ${1:EnumName} {\n\t${2:VALUE} = ${3:value}\n}', { label: 'const enum' }),
+    
+    // 泛型
+    snippetCompletion('function ${1:functionName}<${2:T}>(param: ${2:T}): ${2:T} {\n\t${3}\n}', { label: 'generic function' }),
+    snippetCompletion('class ${1:ClassName}<${2:T}> {\n\tprivate value: ${2:T};\n\tconstructor(value: ${2:T}) {\n\t\tthis.value = value;\n\t}\n}', { label: 'generic class' }),
+    snippetCompletion('interface ${1:InterfaceName}<${2:T}> {\n\tvalue: ${2:T};\n}', { label: 'generic interface' }),
+    
+    // 类型断言和类型守卫
+    snippetCompletion('const ${1:value} = ${2:expression} as ${3:string}', { label: 'type assertion' }),
+    snippetCompletion('const ${1:value} = <${2:string}>${3:expression}', { label: 'type assertion angle' }),
+    snippetCompletion('if (typeof ${1:value} === \'${2:string}\') {\n\t${3}\n}', { label: 'typeof guard' }),
+    snippetCompletion('if (${1:value} instanceof ${2:Constructor}) {\n\t${3}\n}', { label: 'instanceof guard' }),
+    snippetCompletion('function is${1:Type}(${2:value}: any): ${2:value} is ${1:Type} {\n\t${3}\n}', { label: 'type guard function' }),
+    
+    // 函数类型
+    snippetCompletion('const ${1:functionName}: (${2:param}: ${3:string}) => ${4:string} = (${2:param}) => {\n\t${5}\n}', { label: 'function type annotation' }),
+    snippetCompletion('type ${1:FunctionType} = (${2:param}: ${3:string}) => ${4:string}', { label: 'function type' }),
+    snippetCompletion('interface ${1:InterfaceName} {\n\t${2:method}: (${3:param}: ${4:string}) => ${5:string};\n}', { label: 'method in interface' }),
+    
+    // 联合类型和交叉类型
+    snippetCompletion('type ${1:UnionType} = ${2:string} | ${3:number}', { label: 'union type' }),
+    snippetCompletion('type ${1:IntersectionType} = ${2:Type1} & ${3:Type2}', { label: 'intersection type' }),
+    snippetCompletion('type ${1:OptionalType} = {\n\t${2:required}: ${3:string};\n\t${4:optional}?: ${5:string};\n}', { label: 'optional properties' }),
+    
+    // 映射类型
+    snippetCompletion('type ${1:MappedType}<${2:T}> = {\n\t[K in keyof ${2:T}]: ${2:T}[K];\n}', { label: 'mapped type' }),
+    snippetCompletion('type ${1:PartialType}<${2:T}> = Partial<${2:T}>', { label: 'partial type' }),
+    snippetCompletion('type ${1:RequiredType}<${2:T}> = Required<${2:T}>', { label: 'required type' }),
+    snippetCompletion('type ${1:PickType}<${2:T}, ${3:K}> = Pick<${2:T}, ${3:K}>', { label: 'pick type' }),
+    snippetCompletion('type ${1:OmitType}<${2:T}, ${3:K}> = Omit<${2:T}, ${3:K}>', { label: 'omit type' }),
+    
+    // 条件类型
+    snippetCompletion('type ${1:ConditionalType}<${2:T}> = ${2:T} extends ${3:string} ? ${4:true} : ${5:false}', { label: 'conditional type' }),
+    snippetCompletion('type ${1:InferType}<${2:T}> = ${2:T} extends infer ${3:U} ? ${3:U} : never', { label: 'infer type' }),
+    
+    // 工具类型
+    snippetCompletion('type ${1:NullableType} = ${2:string} | null | undefined', { label: 'nullable type' }),
+    snippetCompletion('type ${1:ReadonlyType}<${2:T}> = Readonly<${2:T}>', { label: 'readonly type' }),
+    snippetCompletion('type ${1:RecordType} = Record<${2:string}, ${3:any}>', { label: 'record type' }),
+    
+    // 模块声明
+    snippetCompletion('declare module \'${1:module-name}\' {\n\t${2}\n}', { label: 'declare module' }),
+    snippetCompletion('declare global {\n\t${1}\n}', { label: 'declare global' }),
+    snippetCompletion('declare namespace ${1:Namespace} {\n\t${2}\n}', { label: 'declare namespace' }),
+    
+    // 装饰器
+    snippetCompletion('@${1:decorator}(${2:options})\n${3:class} ${4:ClassName} {\n\t${5}\n}', { label: 'decorator class' }),
+    snippetCompletion('@${1:decorator}(${2:options})\n${3:method} ${4:methodName}() {\n\t${5}\n}', { label: 'decorator method' }),
+    
+    // 异步类型
+    snippetCompletion('const ${1:asyncFunction}: () => Promise<${2:string}> = async () => {\n\t${3}\n}', { label: 'async function type' }),
+    snippetCompletion('type ${1:AsyncType} = Promise<${2:string}>', { label: 'promise type' }),
+    
+    // 常用模式
+    snippetCompletion('const ${1:variable}: ${2:string} = ${3:value}', { label: 'typed variable' }),
+    snippetCompletion('function ${1:functionName}(${2:param}: ${3:string}): ${4:string} {\n\t${5}\n}', { label: 'typed function' }),
+    snippetCompletion('class ${1:ClassName} {\n\tprivate ${2:property}: ${3:string};\n\tconstructor(${2:property}: ${3:string}) {\n\t\tthis.${2:property} = ${2:property};\n\t}\n}', { label: 'typed class' })
+  ];
+
+  return {
+    from: word.from,
+    options: tsSnippets,
+    validFor: /\w*/
+  };
+};
+
+// JavaScript 自动补全（使用CodeMirror原生 + 自定义代码片段）
+export const jsAutocomplete = autocompletion({
+  override: [jsSnippetCompletionSource],
+  defaultKeymap: true,
+  maxRenderedOptions: 50
+});
+
+// React 自动补全
+export const reactAutocomplete = autocompletion({
+  override: [reactSnippetCompletionSource],
+  defaultKeymap: true,
+  maxRenderedOptions: 50
+});
+
+// Vue 自动补全
+export const vueAutocomplete = autocompletion({
+  override: [vueSnippetCompletionSource],
+  defaultKeymap: true,
+  maxRenderedOptions: 50
+});
+
+// TypeScript 自动补全
+export const tsAutocomplete = autocompletion({
+  override: [tsSnippetCompletionSource],
+  defaultKeymap: true,
+  maxRenderedOptions: 50
+}); 
