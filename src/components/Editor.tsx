@@ -39,15 +39,15 @@ import {
     Toast,
     DebugToggleButton
 } from '../styles/editorStyles';
-import { 
-    htmlAutocomplete, 
-    cssAutocomplete, 
+import {
+    htmlAutocomplete,
+    cssAutocomplete,
     jsAutocomplete,
     reactAutocomplete,
     vueAutocomplete,
     tsAutocomplete,
-    bracketMatchingExtension, 
-    closeBracketsExtension 
+    bracketMatchingExtension,
+    closeBracketsExtension
 } from '../services/autocompleteService';
 import { htmlLint, cssLint, jsLint } from '../services/lintService';
 

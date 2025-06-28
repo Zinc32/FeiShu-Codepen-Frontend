@@ -64,7 +64,6 @@ const DebugPreview: React.FC<DebugPreviewProps> = ({
 }) => {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [isReady, setIsReady] = useState(false);
-    const blobUrlRef = useRef<string | null>(null);
 
     const updatePreview = () => {
         const iframe = iframeRef.current;
@@ -97,29 +96,20 @@ const DebugPreview: React.FC<DebugPreviewProps> = ({
                 libraryScripts
             });
 
-            // 清理之前的blob URL
-            if (blobUrlRef.current) {
-                URL.revokeObjectURL(blobUrlRef.current);
-            }
-
-            // 使用Blob URL来创建固定的iframe源，避免每次都生成新的document context
-            const blob = new Blob([content], { type: 'text/html' });
-            const blobUrl = URL.createObjectURL(blob);
-            blobUrlRef.current = blobUrl;
+            // 使用Data URL
+            const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(content);
 
             // 设置iframe源
-            iframe.src = blobUrl;
+            iframe.src = dataUrl;
 
             setIsReady(true);
 
             // 如果启用了调试模式，在控制台输出提示
             if (debugEnabled) {
-                console.log('🐛 Debug mode active - Right-click iframe → Inspect Element to debug');
-                console.log('📍 Source files location: Sources → webpack:/// → ./', {
-                    javascript: 'main.js',
-                    css: 'styles.css'
-                });
-                console.log('💡 The blob file contains the full HTML but you can debug the original source files');
+                console.log('🐛 调试模式已激活');
+                console.log('📍 右键iframe → 检查元素 → Sources面板查看HTML页面');
+                console.log('✅ 断点位置: 查找HTML页面中的<script>标签');
+                console.log('🔄 重新运行: 使用调试控制面板或快捷键 Ctrl+Shift+R');
             }
 
         } catch (error) {
@@ -133,14 +123,22 @@ const DebugPreview: React.FC<DebugPreviewProps> = ({
         updatePreview();
     }, [html, css, js, jsLanguage, debugEnabled]);
 
-    // 清理blob URL
+    // 监听iframe重新运行请求
     useEffect(() => {
-        return () => {
-            if (blobUrlRef.current) {
-                URL.revokeObjectURL(blobUrlRef.current);
+        const handleMessage = (event: MessageEvent) => {
+            if (event.data?.type === 'rerun-debug') {
+                console.log('🔄 收到iframe重新运行请求');
+                // 重新更新iframe内容
+                updatePreview();
             }
         };
-    }, []);
+
+        window.addEventListener('message', handleMessage);
+
+        return () => {
+            window.removeEventListener('message', handleMessage);
+        };
+    }, [html, css, js, jsLanguage, debugEnabled]);
 
     const handleIframeLoad = () => {
         setIsReady(true);
@@ -156,7 +154,7 @@ const DebugPreview: React.FC<DebugPreviewProps> = ({
 
                 {debugEnabled && (
                     <DevToolsTip>
-                        Right-click iframe → Inspect Element to debug with source maps
+                        右键iframe → 检查元素进行调试
                     </DevToolsTip>
                 )}
             </DebugToolbar>
