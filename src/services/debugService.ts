@@ -1,5 +1,5 @@
 // 调试服务 - 简化版，只支持iframe模式
-console.log('🎯 调试服务已加载 - iframe模式');
+
 
 // 创建调试友好的HTML文档 - 只支持iframe模式
 export function createDebugDocument(html: string, css: string, js: string, options: {
@@ -31,7 +31,6 @@ export function createDebugDocument(html: string, css: string, js: string, optio
     }
 
     // 调试模式 - iframe模式
-    console.log('🔧 生成调试文档 - iframe模式');
 
     return `<!DOCTYPE html>
 <html>
@@ -117,22 +116,17 @@ ${js}
         
         // 重新运行用户代码 - iframe模式
         function rerunUserCode() {
-            console.log('🔄 重新运行 user-code.js...');
-            
             try {
                 // 请求父窗口重新加载iframe
-                console.log('📍 重新加载iframe...');
                 window.parent.postMessage({ type: 'rerun-debug' }, '*');
             } catch (error) {
-                console.error('❌ 重新运行失败:', error);
+                console.error('重新运行失败:', error);
             }
         }
         
         // 清空控制台
         function clearConsole() {
             console.clear();
-            console.log('🧹 控制台已清空');
-            console.log('📍 调试文件: user-code.js');
         }
         
         // 快捷键支持
@@ -149,18 +143,12 @@ ${js}
         
         // 页面加载时初始化
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('🎯 Debug View 已加载');
-            console.log('📍 调试文件: user-code.js (内联script标签)');
-            console.log('✅ 行号对应: 断点位置与编辑器中的行号完全一致');
-            console.log('🔄 重新运行: 点击右上角按钮或按 Ctrl+Shift+R');
+            console.log('Debug View loaded');
         });
         
         // 如果DOMContentLoaded已经触发，立即执行
         if (document.readyState !== 'loading') {
-            console.log('🎯 Debug View 已加载');
-            console.log('📍 调试文件: user-code.js (内联script标签)');
-            console.log('✅ 行号对应: 断点位置与编辑器中的行号完全一致');
-            console.log('🔄 重新运行: 点击右上角按钮或按 Ctrl+Shift+R');
+            console.log('Debug View loaded');
         }
     </script>
 </body>
@@ -177,17 +165,14 @@ export class DebugManager {
 
     enable(): void {
         this._enabled = true;
-        console.log('🎯 调试模式已启用 - iframe模式');
     }
 
     disable(): void {
         this._enabled = false;
-        console.log('⏹️ 调试模式已禁用');
     }
 
     toggle(): boolean {
         this._enabled = !this._enabled;
-        console.log(`🔄 调试模式已${this._enabled ? '启用' : '禁用'}`);
         return this._enabled;
     }
 }
@@ -198,12 +183,10 @@ export const debugManager = new DebugManager();
 // 为了向后兼容，保留这些函数但简化实现
 export function generateInlineSourceMap(code: string, filename: string, isCSS: boolean = false): string {
     // 调试模式下不需要源码映射
-    console.log('⚠️ 调试模式下不使用源码映射 - 代码直接运行');
     return '';
 }
 
 export function addDebugSupport(code: string, filename: string, enableSourceMap: boolean = true): string {
     // 调试模式下直接返回原始代码
-    console.log('🔧 调试模式 - 返回原始代码，无需源码映射');
     return code;
 } 

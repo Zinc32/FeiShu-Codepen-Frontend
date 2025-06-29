@@ -35,9 +35,7 @@ export const login = async (data: LoginData) => {
 
 export const register = async (data: RegisterData) => {
     try {
-        console.log('Sending register request:', data);
         const response = await api.post('/users/register', data);
-        console.log('Register response:', response.data);
         return response.data;
     } catch (error) {
         console.error('Register error:', error);
@@ -48,7 +46,6 @@ export const register = async (data: RegisterData) => {
 export const logout = async () => {
     try {
         await api.post('/users/logout');
-        console.log('用户已成功登出');
     } catch (error) {
         console.error('Logout error:', error);
     } finally {

@@ -6,6 +6,7 @@ import { javascript } from '@codemirror/lang-javascript';
 import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
 import { vue } from '@codemirror/lang-vue';
+
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { createPen, updatePen, getUserPens, getPen, deletePen, Pen, PenData } from '../services/penService';
@@ -49,7 +50,7 @@ import {
     bracketMatchingExtension,
     closeBracketsExtension
 } from '../services/autocompleteService';
-import { htmlLint, cssLint, jsLint } from '../services/lintService';
+import { runtimeErrorExtension, addRuntimeErrorsToEditor, clearRuntimeErrorsFromEditor } from '../services/lintService';
 
 // 创建编辑器的辅助函数
 const createEditor = (
@@ -164,6 +165,13 @@ const Editor: React.FC = () => {
     const [shareUrl, setShareUrl] = useState('');
     const [showToast, setShowToast] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
+    // 导入其他 pen 的 state
+    const [importedCssPenIds, setImportedCssPenIds] = useState<string[]>([]);
+    const [importedJsPenIds, setImportedJsPenIds] = useState<string[]>([]);
+    const [showCssImportPanel, setShowCssImportPanel] = useState(false);
+    const [showJsImportPanel, setShowJsImportPanel] = useState(false);
+    const [draggedCssIndex, setDraggedCssIndex] = useState<number | null>(null);
+    const [draggedJsIndex, setDraggedJsIndex] = useState<number | null>(null);
 
     // Debug functionality
     const [debugEnabled, setDebugEnabled] = useState(false);
@@ -188,26 +196,36 @@ const Editor: React.FC = () => {
     const [shouldReinitializeEditors, setShouldReinitializeEditors] = useState(false);
     const [isPenLoaded, setIsPenLoaded] = useState(false); // 添加状态跟踪Pen是否已加载
 
-    // 新增：导入其他 pen 的 state
-    const [importedCssPenIds, setImportedCssPenIds] = useState<string[]>([]);
-    const [importedJsPenIds, setImportedJsPenIds] = useState<string[]>([]);
-    const [showCssImportPanel, setShowCssImportPanel] = useState(false);
-    const [showJsImportPanel, setShowJsImportPanel] = useState(false);
-    const [draggedCssIndex, setDraggedCssIndex] = useState<number | null>(null);
-    const [draggedJsIndex, setDraggedJsIndex] = useState<number | null>(null);
+
+
+    // 运行时错误处理
+    const handleRuntimeError = useCallback((errors: Array<{
+        line: number;
+        column: number;
+        message: string;
+        severity: 'error' | 'warning';
+    }>) => {
+        if (jsEditor) {
+            if (errors.length > 0) {
+                addRuntimeErrorsToEditor(jsEditor, errors);
+            } else {
+                clearRuntimeErrorsFromEditor(jsEditor);
+            }
+        }
+    }, [jsEditor]);
 
     // 导入 pen 的辅助函数
     const toggleCssPen = (penId: string) => {
-        setImportedCssPenIds(prev => 
-            prev.includes(penId) 
+        setImportedCssPenIds(prev =>
+            prev.includes(penId)
                 ? prev.filter(id => id !== penId)
                 : [...prev, penId]
         );
     };
 
     const toggleJsPen = (penId: string) => {
-        setImportedJsPenIds(prev => 
-            prev.includes(penId) 
+        setImportedJsPenIds(prev =>
+            prev.includes(penId)
                 ? prev.filter(id => id !== penId)
                 : [...prev, penId]
         );
@@ -245,7 +263,7 @@ const Editor: React.FC = () => {
         const draggedItem = newOrder[draggedCssIndex];
         newOrder.splice(draggedCssIndex, 1);
         newOrder.splice(dropIndex, 0, draggedItem);
-        
+
         setImportedCssPenIds(newOrder);
         setDraggedCssIndex(null);
     };
@@ -268,7 +286,7 @@ const Editor: React.FC = () => {
         const draggedItem = newOrder[draggedJsIndex];
         newOrder.splice(draggedJsIndex, 1);
         newOrder.splice(dropIndex, 0, draggedItem);
-        
+
         setImportedJsPenIds(newOrder);
         setDraggedJsIndex(null);
     };
@@ -326,7 +344,6 @@ const Editor: React.FC = () => {
     }, []);
 
     const initializeNewPen = useCallback(() => {
-        console.log('initializeNewPen called');
         setTitle('Untitled');
         setCurrentPen(null);
         const defaultHtml = '<div id="app">Hello World</div>';
@@ -378,9 +395,7 @@ const Editor: React.FC = () => {
     // 加载单个Pen的函数（仿照handleLoadPen的逻辑）
     const loadPenById = useCallback(async (penId: string) => {
         try {
-            console.log('Loading pen by ID:', penId);
             const pen = await getPen(penId);
-            console.log('Loaded pen:', pen);
 
             setCurrentPen(pen);
             setTitle(pen.title);
@@ -465,8 +480,8 @@ const Editor: React.FC = () => {
         setIsUpdatingFromState(true);
 
         // 创建新编辑器
-        const newHtmlEditor = createEditor(htmlElement, html(), setHtmlEditor, setHtmlCode, htmlCode, true, htmlAutocomplete, htmlLint);
-        const newCssEditor = createEditor(cssElement, css(), setCssEditor, setCssCode, cssCode, true, cssAutocomplete, cssLint);
+        const newHtmlEditor = createEditor(htmlElement, html(), setHtmlEditor, setHtmlCode, htmlCode, true, htmlAutocomplete);
+        const newCssEditor = createEditor(cssElement, css(), setCssEditor, setCssCode, cssCode, true, cssAutocomplete);
 
         // 根据JavaScript语言选择对应的扩展和自动补全
         let jsExtension: Extension;
@@ -492,7 +507,7 @@ const Editor: React.FC = () => {
                 break;
         }
 
-        const newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, true, jsAutocompleteExt, jsLint);
+        const newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, true, jsAutocompleteExt, runtimeErrorExtension);
 
         // 重置重新初始化标志
         setShouldReinitializeEditors(false);
@@ -519,7 +534,6 @@ const Editor: React.FC = () => {
 
             // 只有当内容真的不同时才更新（避免重复更新）
             if (currentHtml !== htmlCode) {
-                console.log('Updating HTML editor content');
                 htmlEditor.dispatch({
                     changes: {
                         from: 0,
@@ -530,7 +544,6 @@ const Editor: React.FC = () => {
             }
 
             if (currentCss !== cssCode) {
-                console.log('Updating CSS editor content');
                 cssEditor.dispatch({
                     changes: {
                         from: 0,
@@ -541,7 +554,6 @@ const Editor: React.FC = () => {
             }
 
             if (currentJs !== jsCode) {
-                console.log('Updating JS editor content');
                 jsEditor.dispatch({
                     changes: {
                         from: 0,
@@ -665,7 +677,7 @@ const Editor: React.FC = () => {
 
     const handleSave = async () => {
         if (isSaving) return;
-        
+
         setIsSaving(true);
         try {
             const penData = {
@@ -693,7 +705,7 @@ const Editor: React.FC = () => {
 
             setSaveSuccess(true);
             setHasUnsavedChanges(false);
-            
+
             // 重新获取用户的 Pen 列表
             await fetchUserPens();
 
@@ -731,7 +743,6 @@ const Editor: React.FC = () => {
             await fetchUserPens();
             // 重置为新建状态
             initializeNewPen();
-            console.log('Pen deleted successfully');
         } catch (error) {
             console.error('Delete error:', error);
             alert('删除失败，请重试');
@@ -767,10 +778,8 @@ const Editor: React.FC = () => {
         }
 
         const selectedPen = userPens.find(pen => pen.id === penId);
-        console.log('handleLoadPen called:', penId, selectedPen);
 
         if (selectedPen) {
-            console.log('Loading pen:', selectedPen);
             setCurrentPen(selectedPen);
             setTitle(selectedPen.title);
 
@@ -1051,16 +1060,16 @@ const Editor: React.FC = () => {
                             <div id="js-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
                         {/* 导入其他 Pen 的功能区 */}
-                        <div style={{ 
-                            padding: '12px', 
-                            background: '#f8f9fa', 
-                            borderBottom: '1px solid #e1e4e8', 
-                            borderTop: '1px solid #e4e4e4' 
+                        <div style={{
+                            padding: '12px',
+                            background: '#f8f9fa',
+                            borderBottom: '1px solid #e1e4e8',
+                            borderTop: '1px solid #e4e4e4'
                         }}>
-                            <div style={{ 
-                                fontWeight: 600, 
-                                fontSize: 13, 
-                                marginBottom: 8, 
+                            <div style={{
+                                fontWeight: 600,
+                                fontSize: 13,
+                                marginBottom: 8,
                                 color: '#24292e',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -1074,9 +1083,9 @@ const Editor: React.FC = () => {
 
                             {/* CSS 导入区域 */}
                             <div style={{ marginBottom: 12 }}>
-                                <div style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
                                     justifyContent: 'space-between',
                                     marginBottom: 6
                                 }}>
@@ -1268,7 +1277,7 @@ const Editor: React.FC = () => {
                                                     onChange={() => toggleCssPen(pen.id)}
                                                     style={{ margin: 0 }}
                                                 />
-                                                <span style={{ 
+                                                <span style={{
                                                     color: importedCssPenIds.includes(pen.id) ? '#0366d6' : '#586069',
                                                     fontWeight: importedCssPenIds.includes(pen.id) ? 500 : 400
                                                 }}>
@@ -1282,9 +1291,9 @@ const Editor: React.FC = () => {
 
                             {/* JS 导入区域 */}
                             <div>
-                                <div style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
                                     justifyContent: 'space-between',
                                     marginBottom: 6
                                 }}>
@@ -1476,7 +1485,7 @@ const Editor: React.FC = () => {
                                                     onChange={() => toggleJsPen(pen.id)}
                                                     style={{ margin: 0 }}
                                                 />
-                                                <span style={{ 
+                                                <span style={{
                                                     color: importedJsPenIds.includes(pen.id) ? '#f1c40f' : '#586069',
                                                     fontWeight: importedJsPenIds.includes(pen.id) ? 500 : 400
                                                 }}>
@@ -1505,6 +1514,7 @@ const Editor: React.FC = () => {
                                 css={mergedCss}
                                 js={mergedJs}
                                 jsLanguage={jsLanguage}
+                                onRuntimeError={handleRuntimeError}
                             />
                         )}
                     </PreviewContainer>

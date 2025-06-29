@@ -59,7 +59,7 @@ export const loadTypeScriptCompiler = (): Promise<void> => {
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/typescript/5.3.3/typescript.min.js';
     script.async = true;
     script.onload = () => {
-      console.log('TypeScript compiler loaded');
+
       resolve();
     };
     script.onerror = () => {

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from 'react';
 import styled from '@emotion/styled';
-import { loadTypeScriptCompiler } from '../services/compilerService';
 import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { Diagnostic } from '@codemirror/lint';
@@ -12,11 +11,23 @@ const PreviewContainer = styled.div`
   background: white;
 `;
 
+const PreviewIframe = styled.iframe`
+  width: 100%;
+  height: 100%;
+  border: none;
+`;
+
 interface PreviewProps {
   html: string;
   css: string;
   js: string;
   jsLanguage?: 'js' | 'react' | 'vue' | 'ts';
+  onRuntimeError?: (errors: Array<{
+    line: number;
+    column: number;
+    message: string;
+    severity: 'error' | 'warning';
+  }>) => void;
 }
 
 // HTML Lint 函数 - 复制自 lintService.ts
@@ -116,15 +127,28 @@ function htmlLinter(view: EditorView): Diagnostic[] {
   return diagnostics;
 }
 
-const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) => {
+const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onRuntimeError }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // 加载 TypeScript 编译器
+  // 监听来自 iframe 的运行时错误消息
   useEffect(() => {
-    loadTypeScriptCompiler().catch(error => {
-      console.error('Failed to load TypeScript compiler:', error);
-    });
-  }, []);
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'runtime-error') {
+        if (onRuntimeError) {
+          onRuntimeError(event.data.errors);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [onRuntimeError]);
+
+
+
+  // 用 ref 跟踪当前代码，避免不必要的重建
+  const currentCodeRef = useRef({ html: '', css: '', js: '', jsLanguage: 'js' });
+  const iframeInitializedRef = useRef(false);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -132,6 +156,63 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
 
     const doc = iframe.contentDocument;
     if (!doc) return;
+
+    // 检查是否真的需要重建 iframe
+    const needsRebuild = !iframeInitializedRef.current ||
+      currentCodeRef.current.html !== html ||
+      currentCodeRef.current.css !== css ||
+      currentCodeRef.current.jsLanguage !== jsLanguage;
+
+    // 如果只是 JS 代码改变且 iframe 已经初始化，使用增量更新
+    if (iframeInitializedRef.current &&
+      currentCodeRef.current.html === html &&
+      currentCodeRef.current.css === css &&
+      currentCodeRef.current.jsLanguage === jsLanguage &&
+      currentCodeRef.current.js !== js) {
+
+      // 直接执行新的 JS 代码，不重建整个 iframe
+      try {
+        const iframeWindow = iframe.contentWindow;
+        if (iframeWindow && (iframeWindow as any).executeUserCode) {
+          // 清理 JavaScript 代码（与完整重建时相同的清理逻辑）
+          const cleanJs = js
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .split('\n')
+            .filter(line => {
+              const trimmed = line.trim();
+              return !trimmed.includes('错误：') &&
+                !trimmed.includes('// 错误') &&
+                !trimmed.includes('/* 错误') &&
+                !trimmed.includes('setTimeout("alert') &&
+                !trimmed.includes('setInterval("alert') &&
+                !trimmed.includes('eval("') &&
+                !trimmed.includes("eval('") &&
+                !trimmed.includes('document.write(') &&
+                !trimmed.includes('检测到危险函数') &&
+                !trimmed.includes('检测到限制的函数');
+            })
+            .join('\n')
+            .replace(/eval\s*\([^)]*\)\s*;?/g, '')
+            .replace(/new\s+Function\s*\([^)]*\)\s*;?/g, '')
+            .replace(/document\.write\s*\([^)]*\)\s*;?/g, '')
+            .replace(/setTimeout\s*\(\s*["'][^"']*["']\s*,\s*\d+\s*\)\s*;?/g, '')
+            .replace(/setInterval\s*\(\s*["'][^"']*["']\s*,\s*\d+\s*\)\s*;?/g, '')
+            .replace(/alert\s*\([^)]*\)\s*;?/g, '')
+            .trim();
+
+          currentCodeRef.current.js = js;
+          (iframeWindow as any).executeUserCode(cleanJs);
+          return;
+        }
+      } catch (error) {
+        console.warn('Failed incremental update, falling back to full rebuild:', error);
+      }
+    }
+
+    if (!needsRebuild) {
+      return;
+    }
+    currentCodeRef.current = { html, css, js, jsLanguage };
 
     try {
       // 使用 codemirror/lint 的 htmlLinter 来检测HTML错误
@@ -211,10 +292,6 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
         libraryScripts = `
           <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
         `;
-      } else if (jsLanguage === 'ts') {
-        libraryScripts = `
-          <script src="https://cdnjs.cloudflare.com/ajax/libs/typescript/5.3.3/typescript.min.js"></script>
-        `;
       }
 
       // 清理 JavaScript 代码，移除测试用的注释和危险代码
@@ -228,7 +305,6 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
           return !trimmed.includes('错误：') &&
             !trimmed.includes('// 错误') &&
             !trimmed.includes('/* 错误') &&
-            !trimmed.includes('Hello World') &&
             !trimmed.includes('setTimeout("alert') &&
             !trimmed.includes('setInterval("alert') &&
             !trimmed.includes('eval("') &&
@@ -275,51 +351,167 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
           <body>
             ${html}
             <script>
-              try {
-                ${jsLanguage === 'ts' ? `
-                  // TypeScript代码处理
-                  if (typeof ts !== 'undefined') {
-                    try {
-                      const jsCode = \`${escapedJs}\`;
-                      console.log('TypeScript compilation input:', jsCode);
-                      
-                      const result = ts.transpileModule(jsCode, {
-                        compilerOptions: {
-                          module: ts.ModuleKind.ESNext,
-                          target: ts.ScriptTarget.ES2020,
-                          jsx: ts.JsxEmit.Preserve,
-                          strict: false,
-                          esModuleInterop: true,
-                          allowSyntheticDefaultImports: true,
-                          skipLibCheck: true
-                        }
-                      });
-                      
-                      console.log('TypeScript compilation result:', result);
-                      
-                      if (result.diagnostics && result.diagnostics.length > 0) {
-                        throw new Error('TypeScript compilation errors:\\n' + result.diagnostics.map(d => d.messageText).join('\\n'));
-                      }
-                      
-                      console.log('Executing compiled code:', result.outputText);
-                      eval(result.outputText);
-                    } catch (tsError) {
-                      console.error('TypeScript compilation error:', tsError);
-                      // 不显示任何内容，让用户看到编辑器中的错误提示
-                    }
-                  } else {
-                    // 如果没有TypeScript编译器，不显示任何内容
+              (function() {
+                // 运行时错误捕获系统 - 使用 IIFE 避免变量冲突
+                let runtimeErrors = [];
+                
+                // 捕获全局 JavaScript 错误
+                window.onerror = function(message, source, lineno, colno, error) {
+                  
+                  // 暂时使用原始行号，我们需要看看实际的HTML结构
+                  var userCodeLine = lineno || 1;
+                  
+                  // 解析错误信息
+                  let errorMessage = message;
+                  if (typeof message === 'string') {
+                    // 清理错误消息
+                    errorMessage = message
+                      .replace(/Uncaught\\s+/i, '')
+                      .replace(/ReferenceError:\\s*/i, '未定义错误: ')
+                      .replace(/TypeError:\\s*/i, '类型错误: ')
+                      .replace(/SyntaxError:\\s*/i, '语法错误: ')
+                      .replace(/RangeError:\\s*/i, '范围错误: ')
+                      .replace(/Error:\\s*/i, '错误: ')
+                      .replace(/is not defined/i, '未定义')
+                      .replace(/is not a function/i, '不是一个函数')
+                      .replace(/Cannot read propert(y|ies) of undefined/i, '无法读取未定义的属性')
+                      .replace(/Cannot read propert(y|ies) of null/i, '无法读取null的属性')
+                      .replace(/Cannot set propert(y|ies) of undefined/i, '无法设置未定义的属性')
+                      .replace(/Cannot set propert(y|ies) of null/i, '无法设置null的属性');
                   }
-                ` : `
-                  // 普通JavaScript代码执行
-                  const jsCode = \`${escapedJs}\`;
-                  console.log('JavaScript execution input:', jsCode);
-                  eval(jsCode);
-                `}
-              } catch (error) {
-                console.error('Preview script error:', error);
-                // 不显示任何内容，让用户看到编辑器中的错误提示
-              }
+                  
+                  var errorObj = {
+                    line: userCodeLine,
+                    column: colno || 0,
+                    message: 'Runtime error: ' + errorMessage,
+                    severity: 'error'
+                  };
+                  
+                  runtimeErrors.push(errorObj);
+                  
+                  // 发送错误到父窗口
+                  try {
+                    var messageData = {
+                      type: 'runtime-error',
+                      errors: runtimeErrors
+                    };
+                    window.parent.postMessage(messageData, '*');
+                  } catch (e) {
+                    console.error('Failed to send runtime error to parent:', e);
+                  }
+                  
+                  return true; // 阻止默认错误处理
+                };
+                
+                // 提供增量更新函数
+                window.executeUserCode = function(newCode) {
+                  
+                  // 清空之前的错误但不发送清除消息（保持错误显示的连续性）
+                  var previousErrorCount = runtimeErrors.length;
+                  runtimeErrors = [];
+                  var executionSuccessful = false;
+                  
+                  try {
+                    eval(newCode);
+                    executionSuccessful = true;
+                    
+                    // 延迟检查是否需要清除错误，避免时序竞争
+                    setTimeout(function() {
+                      if (executionSuccessful && previousErrorCount > 0 && runtimeErrors.length === 0) {
+                        try {
+                          window.parent.postMessage({
+                            type: 'runtime-error',
+                            errors: []
+                          }, '*');
+                        } catch (e) {
+                          console.warn('Failed to send clear message:', e);
+                        }
+                      }
+                    }, 50); // 给 window.onerror 足够时间处理
+                    
+                  } catch (error) {
+                    // 直接处理eval错误，解析正确的行号
+                    var errorLine = 1; // 默认第1行
+                    
+                    // 尝试从错误堆栈中解析行号
+                    if (error.stack) {
+                      var stackLines = error.stack.split('\\n');
+                      for (var i = 0; i < stackLines.length; i++) {
+                        var line = stackLines[i];
+                        // 查找eval中的行号信息：<anonymous>:行号:列号
+                        var match = line.match(/<anonymous>:(\\d+):(\\d+)/);
+                        if (match) {
+                          errorLine = parseInt(match[1], 10);
+                          break;
+                        }
+                      }
+                    }
+                    
+                    // 直接创建错误对象并发送
+                    var errorObj = {
+                      line: errorLine,
+                      column: 0,
+                      message: 'Runtime error: ' + (error.message || '未知错误'),
+                      severity: 'error'
+                    };
+                    
+                    runtimeErrors.push(errorObj);
+                    
+                    try {
+                      window.parent.postMessage({
+                        type: 'runtime-error',
+                        errors: runtimeErrors
+                      }, '*');
+                    } catch (e) {
+                      console.warn('Failed to send eval error:', e);
+                    }
+                  }
+                };
+                
+                // 捕获 Promise 拒绝错误
+                window.addEventListener('unhandledrejection', function(event) {
+                  console.error('Unhandled promise rejection:', event.reason);
+                  
+                  let errorMessage = 'Unhandled Promise error';
+                  if (event.reason && event.reason.message) {
+                    errorMessage = event.reason.message;
+                  } else if (typeof event.reason === 'string') {
+                    errorMessage = event.reason;
+                  }
+                  
+                  runtimeErrors.push({
+                    line: 1,
+                    column: 0,
+                    message: 'Promise error: ' + errorMessage,
+                    severity: 'error'
+                  });
+                  
+                  try {
+                    window.parent.postMessage({
+                      type: 'runtime-error',
+                      errors: runtimeErrors
+                    }, '*');
+                  } catch (e) {
+                    console.warn('Failed to send promise error to parent:', e);
+                  }
+                  
+                  event.preventDefault();
+                });
+                
+                // 初始代码执行 - 纯运行时执行
+                runtimeErrors = []; // 重置错误数组
+                
+                try {
+                  ${cleanJs}
+                  
+                } catch (error) {
+                  // 手动触发错误处理，因为 try-catch 可能阻止 window.onerror
+                  if (window.onerror) {
+                    window.onerror(error.message, '', 0, 0, error);
+                  }
+                }
+                
+              })(); // 结束 IIFE
             </script>
           </body>
         </html>
@@ -328,18 +520,22 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js' }) =
       doc.open();
       doc.write(content);
       doc.close();
+
+      // 标记 iframe 已初始化
+      iframeInitializedRef.current = true;
+
     } catch (error) {
       console.error('Preview rendering error:', error);
+      iframeInitializedRef.current = false;
     }
   }, [html, css, js, jsLanguage]);
 
   return (
     <PreviewContainer>
-      <iframe
+      <PreviewIframe
         ref={iframeRef}
         title="preview"
         sandbox="allow-scripts allow-same-origin allow-modals allow-pointer-lock allow-downloads"
-        style={{ width: '100%', height: '100%', border: 'none' }}
       />
     </PreviewContainer>
   );

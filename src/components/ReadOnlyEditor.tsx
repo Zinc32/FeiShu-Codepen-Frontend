@@ -12,7 +12,8 @@ import {
     TabButton,
     EditorContent,
     CodeEditor,
-    NoContent
+    NoContent,
+    ImportCount
 } from '../styles/ReadOnlyEditor.styles';
 
 type TabType = 'html' | 'css' | 'js';
@@ -34,10 +35,10 @@ interface ReadOnlyEditorProps {
     currentPenTitle?: string;
 }
 
-const ReadOnlyEditor: React.FC<ReadOnlyEditorProps> = ({ 
-    html: htmlContent, 
-    css: cssContent, 
-    js: jsContent, 
+const ReadOnlyEditor: React.FC<ReadOnlyEditorProps> = ({
+    html: htmlContent,
+    css: cssContent,
+    js: jsContent,
     jsLanguage = 'js',
     importedCssPens = [],
     importedJsPens = [],
@@ -193,7 +194,7 @@ const ReadOnlyEditor: React.FC<ReadOnlyEditorProps> = ({
                 return { content: mergedCss, extension: css() };
             case 'js':
                 const mergedJs = getMergedJsContent();
-                const jsExtension = jsLanguage === 'ts' 
+                const jsExtension = jsLanguage === 'ts'
                     ? javascript({ typescript: true })
                     : javascript();
                 return { content: mergedJs, extension: jsExtension };
@@ -251,13 +252,13 @@ const ReadOnlyEditor: React.FC<ReadOnlyEditorProps> = ({
                     active={activeTab === 'css'}
                     onClick={() => handleTabClick('css')}
                 >
-                    CSS {cssImportCount > 0 && <span style={{ fontSize: '10px', opacity: 0.7 }}>({cssImportCount + 1})</span>}
+                    CSS {cssImportCount > 0 && <ImportCount>({cssImportCount + 1})</ImportCount>}
                 </TabButton>
                 <TabButton
                     active={activeTab === 'js'}
                     onClick={() => handleTabClick('js')}
                 >
-                    {jsLanguage === 'ts' ? 'TS' : 'JS'} {jsImportCount > 0 && <span style={{ fontSize: '10px', opacity: 0.7 }}>({jsImportCount + 1})</span>}
+                    {jsLanguage === 'ts' ? 'TS' : 'JS'} {jsImportCount > 0 && <ImportCount>({jsImportCount + 1})</ImportCount>}
                 </TabButton>
             </TabContainer>
             <EditorContent>

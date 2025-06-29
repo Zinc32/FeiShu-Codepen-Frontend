@@ -242,4 +242,9 @@ export const NoContent = styled.div`
   color: #586069;
   font-size: 14px;
   background-color: #f8f9fa;
+`;
+
+export const ImportCount = styled.span`
+  font-size: 10px;
+  opacity: 0.7;
 `; 

@@ -47,6 +47,13 @@ const IframeContainer = styled.div`
   margin-top: 32px;
 `;
 
+const DebugIframe = styled.iframe`
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+`;
+
 interface DebugPreviewProps {
     html: string;
     css: string;
@@ -106,10 +113,7 @@ const DebugPreview: React.FC<DebugPreviewProps> = ({
 
             // 如果启用了调试模式，在控制台输出提示
             if (debugEnabled) {
-                console.log('🐛 调试模式已激活');
-                console.log('📍 右键iframe → 检查元素 → Sources面板查看HTML页面');
-                console.log('✅ 断点位置: 查找HTML页面中的<script>标签');
-                console.log('🔄 重新运行: 使用调试控制面板或快捷键 Ctrl+Shift+R');
+                console.log('Debug mode activated');
             }
 
         } catch (error) {
@@ -127,7 +131,6 @@ const DebugPreview: React.FC<DebugPreviewProps> = ({
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             if (event.data?.type === 'rerun-debug') {
-                console.log('🔄 收到iframe重新运行请求');
                 // 重新更新iframe内容
                 updatePreview();
             }
@@ -160,17 +163,11 @@ const DebugPreview: React.FC<DebugPreviewProps> = ({
             </DebugToolbar>
 
             <IframeContainer>
-                <iframe
+                <DebugIframe
                     ref={iframeRef}
                     title="debug-preview"
                     sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                     onLoad={handleIframeLoad}
-                    style={{
-                        width: '100%',
-                        height: '100%',
-                        border: 'none',
-                        background: 'white'
-                    }}
                 />
             </IframeContainer>
         </PreviewContainer>

@@ -56,7 +56,6 @@ const PreviewPage: React.FC = () => {
     useEffect(() => {
         loadTypeScriptCompiler()
             .then(() => {
-                console.log('TypeScript compiler loaded successfully');
                 setTSCompilerLoaded(true);
             })
             .catch(error => {
@@ -85,7 +84,7 @@ const PreviewPage: React.FC = () => {
             .filter(Boolean)
             .map(p => p!.css)
             .join('\n\n');
-        
+
         // 合并 JS
         const importedJs = (penData.importedJsPenIds || [])
             .map(penId => allPensData.find(p => p.id === penId))
@@ -105,17 +104,16 @@ const PreviewPage: React.FC = () => {
         try {
             const cssLanguage = penData.cssLanguage || 'css';
             const jsLanguage = penData.jsLanguage || 'js';
-            
+
             // 编译CSS（不需要等待TypeScript编译器）
             const compiledCssResult = await compileCss(penData.css, cssLanguage);
             setCompiledCss(compiledCssResult);
-            
+
             // 对于TypeScript，需要等待编译器加载完成
             if (jsLanguage === 'ts' && !tsCompilerLoaded) {
-                console.log('Waiting for TypeScript compiler to load...');
                 return; // 等待编译器加载
             }
-            
+
             // 编译JavaScript/TypeScript
             const compiledJsResult = await compileJs(penData.js, jsLanguage);
             setCompiledJs(compiledJsResult);
@@ -129,20 +127,20 @@ const PreviewPage: React.FC = () => {
     useEffect(() => {
         const fetchPen = async () => {
             if (!id) return;
-            
+
             try {
                 setLoading(true);
                 setError(null);
-                
+
                 // 并行获取 Pen 数据和所有 Pen 列表
                 const [data, allPensData] = await Promise.all([
                     getPen(id),
                     getUserPens().catch(() => []) // 如果获取失败，使用空数组
                 ]);
-                
+
                 setPen(data);
                 setAllPens(allPensData);
-                
+
                 // 处理代码编译
                 await processCodeCompilation(data);
             } catch (err) {
@@ -216,27 +214,27 @@ const PreviewPage: React.FC = () => {
                     <Title>{pen.title}</Title>
                     {pen.description && <Description>{pen.description}</Description>}
                     {/* 显示导入依赖信息 */}
-                    {((pen.importedCssPenIds && pen.importedCssPenIds.length > 0) || 
-                      (pen.importedJsPenIds && pen.importedJsPenIds.length > 0)) && (
-                        <div style={{ 
-                            marginTop: '8px', 
-                            fontSize: '12px', 
-                            color: '#6a737d',
-                            display: 'flex',
-                            gap: '16px'
-                        }}>
-                            {pen.importedCssPenIds && pen.importedCssPenIds.length > 0 && (
-                                <span>
-                                    🎨 导入了 {pen.importedCssPenIds.length} 个 CSS
-                                </span>
-                            )}
-                            {pen.importedJsPenIds && pen.importedJsPenIds.length > 0 && (
-                                <span>
-                                    ⚡ 导入了 {pen.importedJsPenIds.length} 个 JS
-                                </span>
-                            )}
-                        </div>
-                    )}
+                    {((pen.importedCssPenIds && pen.importedCssPenIds.length > 0) ||
+                        (pen.importedJsPenIds && pen.importedJsPenIds.length > 0)) && (
+                            <div style={{
+                                marginTop: '8px',
+                                fontSize: '12px',
+                                color: '#6a737d',
+                                display: 'flex',
+                                gap: '16px'
+                            }}>
+                                {pen.importedCssPenIds && pen.importedCssPenIds.length > 0 && (
+                                    <span>
+                                        🎨 导入了 {pen.importedCssPenIds.length} 个 CSS
+                                    </span>
+                                )}
+                                {pen.importedJsPenIds && pen.importedJsPenIds.length > 0 && (
+                                    <span>
+                                        ⚡ 导入了 {pen.importedJsPenIds.length} 个 JS
+                                    </span>
+                                )}
+                            </div>
+                        )}
                 </Container>
             </Header>
             <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
