@@ -9,6 +9,8 @@ export interface PenData {
   isPublic?: boolean;
   cssLanguage?: "css" | "scss" | "less";
   jsLanguage?: "js" | "ts" | "vue" | "react";
+  importedCssPenIds?: string[];
+  importedJsPenIds?: string[];
 }
 
 export interface Pen {
@@ -21,6 +23,8 @@ export interface Pen {
   isPublic: boolean;
   cssLanguage?: "css" | "scss" | "less";
   jsLanguage?: "js" | "ts" | "vue" | "react";
+  importedCssPenIds?: string[];
+  importedJsPenIds?: string[];
   userId: string;
   createdAt: string;
   updatedAt: string;

@@ -17,18 +17,31 @@ import {
 
 type TabType = 'html' | 'css' | 'js';
 
+interface ImportedPen {
+    id: string;
+    title: string;
+    css: string;
+    js: string;
+}
+
 interface ReadOnlyEditorProps {
     html: string;
     css: string;
     js: string;
     jsLanguage?: 'js' | 'react' | 'vue' | 'ts';
+    importedCssPens?: ImportedPen[];
+    importedJsPens?: ImportedPen[];
+    currentPenTitle?: string;
 }
 
 const ReadOnlyEditor: React.FC<ReadOnlyEditorProps> = ({ 
     html: htmlContent, 
     css: cssContent, 
     js: jsContent, 
-    jsLanguage = 'js' 
+    jsLanguage = 'js',
+    importedCssPens = [],
+    importedJsPens = [],
+    currentPenTitle = '当前 Pen'
 }) => {
     const [activeTab, setActiveTab] = useState<TabType>('html');
     const [editor, setEditor] = useState<EditorView | null>(null);
@@ -114,18 +127,76 @@ const ReadOnlyEditor: React.FC<ReadOnlyEditorProps> = ({
         return view;
     };
 
+    // 生成合并的 CSS 代码，包含导入的代码和注释
+    const getMergedCssContent = (): string => {
+        const parts: string[] = [];
+
+        // 添加导入的 CSS
+        importedCssPens.forEach((pen, index) => {
+            if (pen.css.trim()) {
+                parts.push(`/* ==========================================`);
+                parts.push(` * 导入的 CSS #${index + 1}: ${pen.title}`);
+                parts.push(` * ========================================== */`);
+                parts.push(pen.css.trim());
+                parts.push('');
+            }
+        });
+
+        // 添加当前 Pen 的 CSS
+        if (cssContent.trim()) {
+            if (parts.length > 0) {
+                parts.push(`/* ==========================================`);
+                parts.push(` * ${currentPenTitle} (当前编辑)`);
+                parts.push(` * ========================================== */`);
+            }
+            parts.push(cssContent.trim());
+        }
+
+        return parts.join('\n');
+    };
+
+    // 生成合并的 JS 代码，包含导入的代码和注释
+    const getMergedJsContent = (): string => {
+        const parts: string[] = [];
+
+        // 添加导入的 JS
+        importedJsPens.forEach((pen, index) => {
+            if (pen.js.trim()) {
+                parts.push(`/* ==========================================`);
+                parts.push(` * 导入的 JS #${index + 1}: ${pen.title}`);
+                parts.push(` * ========================================== */`);
+                parts.push(pen.js.trim());
+                parts.push('');
+            }
+        });
+
+        // 添加当前 Pen 的 JS
+        if (jsContent.trim()) {
+            if (parts.length > 0) {
+                parts.push(`/* ==========================================`);
+                parts.push(` * ${currentPenTitle} (当前编辑)`);
+                parts.push(` * ========================================== */`);
+            }
+            parts.push(jsContent.trim());
+        }
+
+        return parts.join('\n');
+    };
+
     // 根据当前标签页获取内容和语言扩展
     const getCurrentContent = (): { content: string; extension: Extension } => {
         switch (activeTab) {
             case 'html':
                 return { content: htmlContent, extension: html() };
             case 'css':
-                return { content: cssContent, extension: css() };
+                const mergedCss = getMergedCssContent();
+                return { content: mergedCss, extension: css() };
             case 'js':
+                const mergedJs = getMergedJsContent();
                 const jsExtension = jsLanguage === 'ts' 
                     ? javascript({ typescript: true })
                     : javascript();
-                return { content: jsContent, extension: jsExtension };
+                return { content: mergedJs, extension: jsExtension };
             default:
                 return { content: htmlContent, extension: html() };
         }
@@ -157,11 +228,15 @@ const ReadOnlyEditor: React.FC<ReadOnlyEditorProps> = ({
                 editor.destroy();
             }
         };
-    }, [activeTab, htmlContent, cssContent, jsContent, jsLanguage]);
+    }, [activeTab, htmlContent, cssContent, jsContent, jsLanguage, importedCssPens, importedJsPens, currentPenTitle]);
 
     const handleTabClick = (tab: TabType) => {
         setActiveTab(tab);
     };
+
+    // 计算导入数量用于标签显示
+    const cssImportCount = importedCssPens.length;
+    const jsImportCount = importedJsPens.length;
 
     return (
         <EditorContainer>
@@ -176,13 +251,13 @@ const ReadOnlyEditor: React.FC<ReadOnlyEditorProps> = ({
                     active={activeTab === 'css'}
                     onClick={() => handleTabClick('css')}
                 >
-                    CSS
+                    CSS {cssImportCount > 0 && <span style={{ fontSize: '10px', opacity: 0.7 }}>({cssImportCount + 1})</span>}
                 </TabButton>
                 <TabButton
                     active={activeTab === 'js'}
                     onClick={() => handleTabClick('js')}
                 >
-                    {jsLanguage === 'ts' ? 'TS' : 'JS'}
+                    {jsLanguage === 'ts' ? 'TS' : 'JS'} {jsImportCount > 0 && <span style={{ fontSize: '10px', opacity: 0.7 }}>({jsImportCount + 1})</span>}
                 </TabButton>
             </TabContainer>
             <EditorContent>

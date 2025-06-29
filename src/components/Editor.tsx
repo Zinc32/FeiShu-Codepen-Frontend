@@ -188,6 +188,134 @@ const Editor: React.FC = () => {
     const [shouldReinitializeEditors, setShouldReinitializeEditors] = useState(false);
     const [isPenLoaded, setIsPenLoaded] = useState(false); // 添加状态跟踪Pen是否已加载
 
+    // 新增：导入其他 pen 的 state
+    const [importedCssPenIds, setImportedCssPenIds] = useState<string[]>([]);
+    const [importedJsPenIds, setImportedJsPenIds] = useState<string[]>([]);
+    const [showCssImportPanel, setShowCssImportPanel] = useState(false);
+    const [showJsImportPanel, setShowJsImportPanel] = useState(false);
+    const [draggedCssIndex, setDraggedCssIndex] = useState<number | null>(null);
+    const [draggedJsIndex, setDraggedJsIndex] = useState<number | null>(null);
+
+    // 导入 pen 的辅助函数
+    const toggleCssPen = (penId: string) => {
+        setImportedCssPenIds(prev => 
+            prev.includes(penId) 
+                ? prev.filter(id => id !== penId)
+                : [...prev, penId]
+        );
+    };
+
+    const toggleJsPen = (penId: string) => {
+        setImportedJsPenIds(prev => 
+            prev.includes(penId) 
+                ? prev.filter(id => id !== penId)
+                : [...prev, penId]
+        );
+    };
+
+    const clearAllCssImports = () => setImportedCssPenIds([]);
+    const clearAllJsImports = () => setImportedJsPenIds([]);
+
+    const importAllCss = () => {
+        const availablePens = userPens.filter(p => !currentPen || p.id !== currentPen.id);
+        setImportedCssPenIds(availablePens.map(p => p.id));
+    };
+
+    const importAllJs = () => {
+        const availablePens = userPens.filter(p => !currentPen || p.id !== currentPen.id);
+        setImportedJsPenIds(availablePens.map(p => p.id));
+    };
+
+    // 拖拽排序功能
+    const handleCssDragStart = (e: React.DragEvent, index: number) => {
+        setDraggedCssIndex(index);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleCssDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    };
+
+    const handleCssDrop = (e: React.DragEvent, dropIndex: number) => {
+        e.preventDefault();
+        if (draggedCssIndex === null || draggedCssIndex === dropIndex) return;
+
+        const newOrder = [...importedCssPenIds];
+        const draggedItem = newOrder[draggedCssIndex];
+        newOrder.splice(draggedCssIndex, 1);
+        newOrder.splice(dropIndex, 0, draggedItem);
+        
+        setImportedCssPenIds(newOrder);
+        setDraggedCssIndex(null);
+    };
+
+    const handleJsDragStart = (e: React.DragEvent, index: number) => {
+        setDraggedJsIndex(index);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleJsDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    };
+
+    const handleJsDrop = (e: React.DragEvent, dropIndex: number) => {
+        e.preventDefault();
+        if (draggedJsIndex === null || draggedJsIndex === dropIndex) return;
+
+        const newOrder = [...importedJsPenIds];
+        const draggedItem = newOrder[draggedJsIndex];
+        newOrder.splice(draggedJsIndex, 1);
+        newOrder.splice(dropIndex, 0, draggedItem);
+        
+        setImportedJsPenIds(newOrder);
+        setDraggedJsIndex(null);
+    };
+
+    // 上移下移功能
+    const moveCssUp = (index: number) => {
+        if (index === 0) return;
+        const newOrder = [...importedCssPenIds];
+        [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+        setImportedCssPenIds(newOrder);
+    };
+
+    const moveCssDown = (index: number) => {
+        if (index === importedCssPenIds.length - 1) return;
+        const newOrder = [...importedCssPenIds];
+        [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+        setImportedCssPenIds(newOrder);
+    };
+
+    const moveJsUp = (index: number) => {
+        if (index === 0) return;
+        const newOrder = [...importedJsPenIds];
+        [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+        setImportedJsPenIds(newOrder);
+    };
+
+    const moveJsDown = (index: number) => {
+        if (index === importedJsPenIds.length - 1) return;
+        const newOrder = [...importedJsPenIds];
+        [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+        setImportedJsPenIds(newOrder);
+    };
+
+    // 计算合并后的 CSS/JS
+    const mergedCss = [
+        ...userPens.filter(p => importedCssPenIds.includes(p.id)).sort((a, b) => {
+            return importedCssPenIds.indexOf(a.id) - importedCssPenIds.indexOf(b.id);
+        }).map(p => p.css),
+        compiledCss
+    ].join('\n\n');
+    const mergedJs = [
+        ...userPens.filter(p => importedJsPenIds.includes(p.id)).sort((a, b) => {
+            return importedJsPenIds.indexOf(a.id) - importedJsPenIds.indexOf(b.id);
+        }).map(p => p.js),
+        compiledJs
+    ].join('\n\n');
+
     const fetchUserPens = useCallback(async () => {
         try {
             const pens = await getUserPens();
@@ -265,6 +393,10 @@ const Editor: React.FC = () => {
             // 加载语言选择（如果保存了的话）
             if (pen.cssLanguage) setCssLanguage(pen.cssLanguage);
             if (pen.jsLanguage) setJsLanguage(pen.jsLanguage);
+
+            // 加载导入的 Pen ID
+            if (pen.importedCssPenIds) setImportedCssPenIds(pen.importedCssPenIds);
+            if (pen.importedJsPenIds) setImportedJsPenIds(pen.importedJsPenIds);
 
             // 标记Pen已加载完成
             setIsPenLoaded(true);
@@ -533,45 +665,44 @@ const Editor: React.FC = () => {
 
     const handleSave = async () => {
         if (isSaving) return;
+        
         setIsSaving(true);
-        setSaveSuccess(false);
-
         try {
-            const penData: PenData = {
+            const penData = {
                 title,
-                html: htmlEditor?.state.doc.toString() || '',
-                css: cssEditor?.state.doc.toString() || '',
-                js: jsEditor?.state.doc.toString() || '',
-                isPublic: true,
-                cssLanguage: cssLanguage,
-                jsLanguage: jsLanguage
+                html: htmlCode,
+                css: cssCode,
+                js: jsCode,
+                cssLanguage,
+                jsLanguage,
+                importedCssPenIds,
+                importedJsPenIds
             };
 
             if (currentPen) {
-                // 更新现有文件
-                const updatedPen = await updatePen(currentPen.id, penData);
-                setCurrentPen(updatedPen);
-                console.log('Pen updated successfully:', updatedPen.title);
+                // 更新现有的 Pen
+                await updatePen(currentPen.id, penData);
+                setCurrentPen(prev => prev ? { ...prev, ...penData } : null);
             } else {
-                // 创建新文件
+                // 创建新的 Pen
                 const newPen = await createPen(penData);
                 setCurrentPen(newPen);
-                console.log('New pen created successfully:', newPen.title);
-                // 更新 URL 到新创建的 pen ID，避免跳到新的空白 pen
-                navigate(`/editor/${newPen.id}`, { replace: true });
+                // 更新 URL 以反映新创建的 Pen
+                window.history.replaceState(null, '', `/editor/${newPen.id}`);
             }
-            // 刷新用户的pen列表
+
+            setSaveSuccess(true);
+            setHasUnsavedChanges(false);
+            
+            // 重新获取用户的 Pen 列表
             await fetchUserPens();
 
-            // 保存成功后清除未保存标记
-            setHasUnsavedChanges(false);
-
-            // 显示保存成功反馈
-            setSaveSuccess(true);
-            setTimeout(() => setSaveSuccess(false), 2000); // 2秒后隐藏成功提示
+            // 3秒后重置保存成功状态
+            setTimeout(() => {
+                setSaveSuccess(false);
+            }, 3000);
         } catch (error) {
-            console.error('Save error:', error);
-            alert('保存失败，请重试');
+            console.error('Save failed:', error);
         } finally {
             setIsSaving(false);
         }
@@ -919,22 +1050,460 @@ const Editor: React.FC = () => {
 
                             <div id="js-editor" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
                         </div>
+                        {/* 导入其他 Pen 的功能区 */}
+                        <div style={{ 
+                            padding: '12px', 
+                            background: '#f8f9fa', 
+                            borderBottom: '1px solid #e1e4e8', 
+                            borderTop: '1px solid #e4e4e4' 
+                        }}>
+                            <div style={{ 
+                                fontWeight: 600, 
+                                fontSize: 13, 
+                                marginBottom: 8, 
+                                color: '#24292e',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8
+                            }}>
+                                <span>📦 导入其他 Pen</span>
+                                <div style={{ fontSize: 11, color: '#6a737d' }}>
+                                    ({importedCssPenIds.length + importedJsPenIds.length} 个已选)
+                                </div>
+                            </div>
+
+                            {/* CSS 导入区域 */}
+                            <div style={{ marginBottom: 12 }}>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'space-between',
+                                    marginBottom: 6
+                                }}>
+                                    <span style={{ fontSize: 12, fontWeight: 500, color: '#0366d6' }}>
+                                        🎨 CSS ({importedCssPenIds.length})
+                                    </span>
+                                    <div style={{ display: 'flex', gap: 4 }}>
+                                        <button
+                                            onClick={() => setShowCssImportPanel(!showCssImportPanel)}
+                                            style={{
+                                                padding: '2px 6px',
+                                                fontSize: 11,
+                                                border: '1px solid #d1d5da',
+                                                borderRadius: 3,
+                                                background: showCssImportPanel ? '#0366d6' : 'white',
+                                                color: showCssImportPanel ? 'white' : '#586069',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            {showCssImportPanel ? '收起' : '选择'}
+                                        </button>
+                                        {importedCssPenIds.length > 0 && (
+                                            <button
+                                                onClick={clearAllCssImports}
+                                                style={{
+                                                    padding: '2px 6px',
+                                                    fontSize: 11,
+                                                    border: '1px solid #d73a49',
+                                                    borderRadius: 3,
+                                                    background: 'white',
+                                                    color: '#d73a49',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                清空
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* CSS 已选标签 */}
+                                {importedCssPenIds.length > 0 && (
+                                    <div style={{ marginBottom: 6 }}>
+                                        <div style={{ fontSize: 11, color: '#6a737d', marginBottom: 4 }}>
+                                            优先级顺序（可拖拽调整，越靠前优先级越低）:
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            {importedCssPenIds.map((penId, index) => {
+                                                const pen = userPens.find(p => p.id === penId);
+                                                return pen ? (
+                                                    <div
+                                                        key={penId}
+                                                        draggable
+                                                        onDragStart={(e) => handleCssDragStart(e, index)}
+                                                        onDragOver={handleCssDragOver}
+                                                        onDrop={(e) => handleCssDrop(e, index)}
+                                                        style={{
+                                                            padding: '4px 8px',
+                                                            fontSize: 11,
+                                                            background: draggedCssIndex === index ? '#e3f2fd' : '#f8f9fa',
+                                                            color: '#24292e',
+                                                            borderRadius: 4,
+                                                            border: '1px solid #d1d5da',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            cursor: 'grab',
+                                                            transition: 'all 0.2s ease'
+                                                        }}
+                                                        onMouseDown={(e) => e.currentTarget.style.cursor = 'grabbing'}
+                                                        onMouseUp={(e) => e.currentTarget.style.cursor = 'grab'}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                            <span style={{ color: '#6a737d', fontSize: 10 }}>
+                                                                #{index + 1}
+                                                            </span>
+                                                            <span style={{ color: '#0366d6', fontWeight: 500 }}>
+                                                                🎨 {pen.title}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                            <button
+                                                                onClick={() => moveCssUp(index)}
+                                                                disabled={index === 0}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    color: index === 0 ? '#d1d5da' : '#586069',
+                                                                    cursor: index === 0 ? 'not-allowed' : 'pointer',
+                                                                    fontSize: 12,
+                                                                    padding: '2px 4px'
+                                                                }}
+                                                                title="上移"
+                                                            >
+                                                                ↑
+                                                            </button>
+                                                            <button
+                                                                onClick={() => moveCssDown(index)}
+                                                                disabled={index === importedCssPenIds.length - 1}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    color: index === importedCssPenIds.length - 1 ? '#d1d5da' : '#586069',
+                                                                    cursor: index === importedCssPenIds.length - 1 ? 'not-allowed' : 'pointer',
+                                                                    fontSize: 12,
+                                                                    padding: '2px 4px'
+                                                                }}
+                                                                title="下移"
+                                                            >
+                                                                ↓
+                                                            </button>
+                                                            <button
+                                                                onClick={() => toggleCssPen(penId)}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    color: '#d73a49',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: 12,
+                                                                    padding: '2px 4px'
+                                                                }}
+                                                                title="移除"
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : null;
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* CSS 选择面板 */}
+                                {showCssImportPanel && (
+                                    <div style={{
+                                        maxHeight: 120,
+                                        overflowY: 'auto',
+                                        border: '1px solid #d1d5da',
+                                        borderRadius: 4,
+                                        background: 'white',
+                                        padding: 6
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                            <button
+                                                onClick={importAllCss}
+                                                style={{
+                                                    fontSize: 10,
+                                                    padding: '2px 4px',
+                                                    border: '1px solid #28a745',
+                                                    borderRadius: 2,
+                                                    background: 'white',
+                                                    color: '#28a745',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                全选
+                                            </button>
+                                            <button
+                                                onClick={clearAllCssImports}
+                                                style={{
+                                                    fontSize: 10,
+                                                    padding: '2px 4px',
+                                                    border: '1px solid #dc3545',
+                                                    borderRadius: 2,
+                                                    background: 'white',
+                                                    color: '#dc3545',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                全不选
+                                            </button>
+                                        </div>
+                                        {userPens.filter(p => !currentPen || p.id !== currentPen.id).map(pen => (
+                                            <label
+                                                key={pen.id}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 6,
+                                                    padding: '3px 0',
+                                                    cursor: 'pointer',
+                                                    fontSize: 11
+                                                }}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={importedCssPenIds.includes(pen.id)}
+                                                    onChange={() => toggleCssPen(pen.id)}
+                                                    style={{ margin: 0 }}
+                                                />
+                                                <span style={{ 
+                                                    color: importedCssPenIds.includes(pen.id) ? '#0366d6' : '#586069',
+                                                    fontWeight: importedCssPenIds.includes(pen.id) ? 500 : 400
+                                                }}>
+                                                    {pen.title}
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* JS 导入区域 */}
+                            <div>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'space-between',
+                                    marginBottom: 6
+                                }}>
+                                    <span style={{ fontSize: 12, fontWeight: 500, color: '#f1c40f' }}>
+                                        ⚡ JavaScript ({importedJsPenIds.length})
+                                    </span>
+                                    <div style={{ display: 'flex', gap: 4 }}>
+                                        <button
+                                            onClick={() => setShowJsImportPanel(!showJsImportPanel)}
+                                            style={{
+                                                padding: '2px 6px',
+                                                fontSize: 11,
+                                                border: '1px solid #d1d5da',
+                                                borderRadius: 3,
+                                                background: showJsImportPanel ? '#f1c40f' : 'white',
+                                                color: showJsImportPanel ? 'white' : '#586069',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            {showJsImportPanel ? '收起' : '选择'}
+                                        </button>
+                                        {importedJsPenIds.length > 0 && (
+                                            <button
+                                                onClick={clearAllJsImports}
+                                                style={{
+                                                    padding: '2px 6px',
+                                                    fontSize: 11,
+                                                    border: '1px solid #d73a49',
+                                                    borderRadius: 3,
+                                                    background: 'white',
+                                                    color: '#d73a49',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                清空
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* JS 已选标签 */}
+                                {importedJsPenIds.length > 0 && (
+                                    <div style={{ marginBottom: 6 }}>
+                                        <div style={{ fontSize: 11, color: '#6a737d', marginBottom: 4 }}>
+                                            优先级顺序（可拖拽调整，越靠前优先级越低）:
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            {importedJsPenIds.map((penId, index) => {
+                                                const pen = userPens.find(p => p.id === penId);
+                                                return pen ? (
+                                                    <div
+                                                        key={penId}
+                                                        draggable
+                                                        onDragStart={(e) => handleJsDragStart(e, index)}
+                                                        onDragOver={handleJsDragOver}
+                                                        onDrop={(e) => handleJsDrop(e, index)}
+                                                        style={{
+                                                            padding: '4px 8px',
+                                                            fontSize: 11,
+                                                            background: draggedJsIndex === index ? '#fff8e1' : '#f8f9fa',
+                                                            color: '#24292e',
+                                                            borderRadius: 4,
+                                                            border: '1px solid #d1d5da',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            cursor: 'grab',
+                                                            transition: 'all 0.2s ease'
+                                                        }}
+                                                        onMouseDown={(e) => e.currentTarget.style.cursor = 'grabbing'}
+                                                        onMouseUp={(e) => e.currentTarget.style.cursor = 'grab'}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                            <span style={{ color: '#6a737d', fontSize: 10 }}>
+                                                                #{index + 1}
+                                                            </span>
+                                                            <span style={{ color: '#f1c40f', fontWeight: 500 }}>
+                                                                ⚡ {pen.title}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                            <button
+                                                                onClick={() => moveJsUp(index)}
+                                                                disabled={index === 0}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    color: index === 0 ? '#d1d5da' : '#586069',
+                                                                    cursor: index === 0 ? 'not-allowed' : 'pointer',
+                                                                    fontSize: 12,
+                                                                    padding: '2px 4px'
+                                                                }}
+                                                                title="上移"
+                                                            >
+                                                                ↑
+                                                            </button>
+                                                            <button
+                                                                onClick={() => moveJsDown(index)}
+                                                                disabled={index === importedJsPenIds.length - 1}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    color: index === importedJsPenIds.length - 1 ? '#d1d5da' : '#586069',
+                                                                    cursor: index === importedJsPenIds.length - 1 ? 'not-allowed' : 'pointer',
+                                                                    fontSize: 12,
+                                                                    padding: '2px 4px'
+                                                                }}
+                                                                title="下移"
+                                                            >
+                                                                ↓
+                                                            </button>
+                                                            <button
+                                                                onClick={() => toggleJsPen(penId)}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    color: '#d73a49',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: 12,
+                                                                    padding: '2px 4px'
+                                                                }}
+                                                                title="移除"
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : null;
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* JS 选择面板 */}
+                                {showJsImportPanel && (
+                                    <div style={{
+                                        maxHeight: 120,
+                                        overflowY: 'auto',
+                                        border: '1px solid #d1d5da',
+                                        borderRadius: 4,
+                                        background: 'white',
+                                        padding: 6
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                            <button
+                                                onClick={importAllJs}
+                                                style={{
+                                                    fontSize: 10,
+                                                    padding: '2px 4px',
+                                                    border: '1px solid #28a745',
+                                                    borderRadius: 2,
+                                                    background: 'white',
+                                                    color: '#28a745',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                全选
+                                            </button>
+                                            <button
+                                                onClick={clearAllJsImports}
+                                                style={{
+                                                    fontSize: 10,
+                                                    padding: '2px 4px',
+                                                    border: '1px solid #dc3545',
+                                                    borderRadius: 2,
+                                                    background: 'white',
+                                                    color: '#dc3545',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                全不选
+                                            </button>
+                                        </div>
+                                        {userPens.filter(p => !currentPen || p.id !== currentPen.id).map(pen => (
+                                            <label
+                                                key={pen.id}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 6,
+                                                    padding: '3px 0',
+                                                    cursor: 'pointer',
+                                                    fontSize: 11
+                                                }}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={importedJsPenIds.includes(pen.id)}
+                                                    onChange={() => toggleJsPen(pen.id)}
+                                                    style={{ margin: 0 }}
+                                                />
+                                                <span style={{ 
+                                                    color: importedJsPenIds.includes(pen.id) ? '#f1c40f' : '#586069',
+                                                    fontWeight: importedJsPenIds.includes(pen.id) ? 500 : 400
+                                                }}>
+                                                    {pen.title}
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </Split>
                     {/* 右侧预览区 */}
                     <PreviewContainer>
                         {debugEnabled ? (
                             <DebugPreview
                                 html={htmlCode}
-                                css={compiledCss}
-                                js={compiledJs}
+                                css={mergedCss}
+                                js={mergedJs}
                                 jsLanguage={jsLanguage}
                                 debugEnabled={debugEnabled}
                             />
                         ) : (
                             <Preview
                                 html={htmlCode}
-                                css={compiledCss}
-                                js={compiledJs}
+                                css={mergedCss}
+                                js={mergedJs}
                                 jsLanguage={jsLanguage}
                             />
                         )}

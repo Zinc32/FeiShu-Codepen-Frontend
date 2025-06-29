@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { getPen, Pen } from '../services/penService';
+import { getPen, Pen, getUserPens } from '../services/penService';
 import Preview from '../components/Preview';
 import ReadOnlyEditor from '../components/ReadOnlyEditor';
 import { compileJsFramework, loadTypeScriptCompiler, compileCssFramework } from '../services/compilerService';
@@ -21,10 +21,13 @@ import {
 const PreviewPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const [pen, setPen] = useState<Pen | null>(null);
+    const [allPens, setAllPens] = useState<Pen[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [compiledCss, setCompiledCss] = useState('');
     const [compiledJs, setCompiledJs] = useState('');
+    const [mergedCss, setMergedCss] = useState('');
+    const [mergedJs, setMergedJs] = useState('');
     const [tsCompilerLoaded, setTSCompilerLoaded] = useState(false);
 
     // 编译 JavaScript 框架代码，使用compilerService中共享的编译服务
@@ -63,6 +66,40 @@ const PreviewPage: React.FC = () => {
             });
     }, []);
 
+    // 获取所有用户的 Pen（用于解析导入依赖）
+    const fetchAllPens = useCallback(async () => {
+        try {
+            const pens = await getUserPens();
+            setAllPens(pens);
+        } catch (error) {
+            console.error('Failed to fetch all pens:', error);
+            setAllPens([]);
+        }
+    }, []);
+
+    // 合并导入的 CSS/JS
+    const mergeDependencies = useCallback((penData: Pen, allPensData: Pen[]) => {
+        // 合并 CSS
+        const importedCss = (penData.importedCssPenIds || [])
+            .map(penId => allPensData.find(p => p.id === penId))
+            .filter(Boolean)
+            .map(p => p!.css)
+            .join('\n\n');
+        
+        // 合并 JS
+        const importedJs = (penData.importedJsPenIds || [])
+            .map(penId => allPensData.find(p => p.id === penId))
+            .filter(Boolean)
+            .map(p => p!.js)
+            .join('\n\n');
+
+        const finalCss = [importedCss, compiledCss].filter(Boolean).join('\n\n');
+        const finalJs = [importedJs, compiledJs].filter(Boolean).join('\n\n');
+
+        setMergedCss(finalCss);
+        setMergedJs(finalJs);
+    }, [compiledCss, compiledJs]);
+
     // 处理代码编译的函数
     const processCodeCompilation = useCallback(async (penData: Pen) => {
         try {
@@ -97,8 +134,14 @@ const PreviewPage: React.FC = () => {
                 setLoading(true);
                 setError(null);
                 
-                const data = await getPen(id);
+                // 并行获取 Pen 数据和所有 Pen 列表
+                const [data, allPensData] = await Promise.all([
+                    getPen(id),
+                    getUserPens().catch(() => []) // 如果获取失败，使用空数组
+                ]);
+                
                 setPen(data);
+                setAllPens(allPensData);
                 
                 // 处理代码编译
                 await processCodeCompilation(data);
@@ -112,6 +155,13 @@ const PreviewPage: React.FC = () => {
 
         fetchPen();
     }, [id, processCodeCompilation]);
+
+    // 当编译完成或依赖数据准备好时，合并依赖
+    useEffect(() => {
+        if (pen && allPens.length >= 0 && (compiledCss || compiledJs)) {
+            mergeDependencies(pen, allPens);
+        }
+    }, [pen, allPens, compiledCss, compiledJs, mergeDependencies]);
 
     // 当TypeScript编译器加载完成后，重新处理代码编译
     useEffect(() => {
@@ -165,6 +215,28 @@ const PreviewPage: React.FC = () => {
                 <Container>
                     <Title>{pen.title}</Title>
                     {pen.description && <Description>{pen.description}</Description>}
+                    {/* 显示导入依赖信息 */}
+                    {((pen.importedCssPenIds && pen.importedCssPenIds.length > 0) || 
+                      (pen.importedJsPenIds && pen.importedJsPenIds.length > 0)) && (
+                        <div style={{ 
+                            marginTop: '8px', 
+                            fontSize: '12px', 
+                            color: '#6a737d',
+                            display: 'flex',
+                            gap: '16px'
+                        }}>
+                            {pen.importedCssPenIds && pen.importedCssPenIds.length > 0 && (
+                                <span>
+                                    🎨 导入了 {pen.importedCssPenIds.length} 个 CSS
+                                </span>
+                            )}
+                            {pen.importedJsPenIds && pen.importedJsPenIds.length > 0 && (
+                                <span>
+                                    ⚡ 导入了 {pen.importedJsPenIds.length} 个 JS
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </Container>
             </Header>
             <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
@@ -181,6 +253,29 @@ const PreviewPage: React.FC = () => {
                         css={pen.css}
                         js={pen.js}
                         jsLanguage={pen.jsLanguage || 'js'}
+                        importedCssPens={
+                            (pen.importedCssPenIds || [])
+                                .map(penId => allPens.find(p => p.id === penId))
+                                .filter(Boolean)
+                                .map(p => ({
+                                    id: p!.id,
+                                    title: p!.title,
+                                    css: p!.css,
+                                    js: p!.js
+                                }))
+                        }
+                        importedJsPens={
+                            (pen.importedJsPenIds || [])
+                                .map(penId => allPens.find(p => p.id === penId))
+                                .filter(Boolean)
+                                .map(p => ({
+                                    id: p!.id,
+                                    title: p!.title,
+                                    css: p!.css,
+                                    js: p!.js
+                                }))
+                        }
+                        currentPenTitle={pen.title}
                     />
                     {/* 右侧预览区域 */}
                     <PreviewContainer>
@@ -190,8 +285,8 @@ const PreviewPage: React.FC = () => {
                         <PreviewContent>
                             <Preview
                                 html={pen.html}
-                                css={compiledCss}
-                                js={compiledJs}
+                                css={mergedCss || compiledCss}
+                                js={mergedJs || compiledJs}
                                 jsLanguage={pen.jsLanguage || 'js'}
                             />
                         </PreviewContent>
