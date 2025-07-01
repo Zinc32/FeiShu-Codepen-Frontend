@@ -27,7 +27,7 @@ import {
     SelectItem,
     SelectCheckbox,
     SelectItemText
-} from '../styles/importPanel.styles';
+} from '../styles/importPanelStyles';
 
 interface ImportPanelProps {
     // CSS 相关

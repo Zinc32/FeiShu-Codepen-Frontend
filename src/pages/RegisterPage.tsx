@@ -9,7 +9,7 @@ import {
     Button,
     ErrorMessage,
     LoginLink
-} from '../styles/RegisterPage.styles';
+} from '../styles/registerPageStyles';
 
 const RegisterPage: React.FC = () => {
     const navigate = useNavigate();

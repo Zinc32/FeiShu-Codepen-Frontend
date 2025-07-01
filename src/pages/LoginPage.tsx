@@ -10,7 +10,7 @@ import {Container,
   Button,
   ErrorMessage,
   RegisterLink
-} from '../styles/loginPage';
+} from '../styles/loginPageStyles';
 
 const LoginPage: React.FC = () => {
     const navigate = useNavigate();

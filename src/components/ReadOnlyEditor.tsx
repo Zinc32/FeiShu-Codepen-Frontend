@@ -14,7 +14,7 @@ import {
     CodeEditor,
     NoContent,
     ImportCount
-} from '../styles/ReadOnlyEditor.styles';
+} from '../styles/readOnlyEditorStyles';
 
 type TabType = 'html' | 'css' | 'js';
 

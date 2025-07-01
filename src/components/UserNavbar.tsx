@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 import {
     NavbarContainer,NavbarContent,Logo,UserSection,UserInfo,UserAvatar,Username,LogoutButton,LoadingSpinner} 
-    from '../styles/userNavbar';
+    from '../styles/userNavbarStyles';
 
 const UserNavbar: React.FC = () => {
     const navigate = useNavigate();

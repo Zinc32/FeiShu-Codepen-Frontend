@@ -21,7 +21,7 @@ import {
     EmptyIcon,
     EmptyTitle,
     EmptyText
-} from '../styles/PensPage.styles';
+} from '../styles/pensPageStyles';
 
 const PensPage: React.FC = () => {
     const [pens, setPens] = useState<Pen[]>([]);
