@@ -2,8 +2,9 @@ import { htmlCompletionSource } from '@codemirror/lang-html';
 import { cssCompletionSource } from '@codemirror/lang-css';
 import { javascriptLanguage } from '@codemirror/lang-javascript';
 import { bracketMatching } from '@codemirror/language';//括号匹配高亮
-import { autocompletion, CompletionContext, CompletionSource, snippetCompletion } from '@codemirror/autocomplete';
+import { autocompletion, CompletionContext, CompletionSource, snippetCompletion, completionKeymap } from '@codemirror/autocomplete';
 import { keymap } from '@codemirror/view';
+import { closeBracketsKeymap } from '@codemirror/autocomplete';
 
 // 常用 HTML5 标签（用于标签补全）
 const htmlTags = [
@@ -104,7 +105,7 @@ export const htmlTagCompletionSource: CompletionSource = (context: CompletionCon
 
   return {
     from: word.from,
-    options: [...tagSnippets,...htmlSnippets],
+    options: [...tagSnippets, ...htmlSnippets],
     validFor: /\w*/
   };
 };
@@ -113,7 +114,8 @@ export const htmlTagCompletionSource: CompletionSource = (context: CompletionCon
 export const htmlAutocomplete = autocompletion({
   override: [htmlTagCompletionSource, htmlCompletionSource],
   defaultKeymap: true,
-  maxRenderedOptions: 50
+  maxRenderedOptions: 50,
+  activateOnTyping: true
 });
 
 
@@ -155,7 +157,7 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
       // 检查光标后是否已经有单位，避免重复补全
       const afterCursor = line.text.slice(context.pos - line.from);
       const hasUnitAfter = /^[a-zA-Z%]+/.test(afterCursor);
-      
+
       if (hasUnitAfter) {
         return null; // 已经有单位了，不需要补全
       }
@@ -164,10 +166,10 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
       const getUnitsForProperty = (prop: string): string[] => {
         // 长度相关属性
         if (['width', 'height', 'margin', 'padding', 'border-width', 'font-size', 'line-height',
-             'top', 'right', 'bottom', 'left', 'min-width', 'max-width', 'min-height', 'max-height',
-             'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-             'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-             'border-radius', 'text-indent', 'letter-spacing', 'word-spacing'].includes(prop)) {
+          'top', 'right', 'bottom', 'left', 'min-width', 'max-width', 'min-height', 'max-height',
+          'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+          'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+          'border-radius', 'text-indent', 'letter-spacing', 'word-spacing'].includes(prop)) {
           return ['px', 'rem', 'em', '%', 'vw', 'vh', 'pt', 'cm', 'mm', 'in'];
         }
         // 时间相关属性
@@ -209,8 +211,8 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
     const getPropertyValues = (prop: string): string[] => {
       const propertyValues: { [key: string]: string[] } = {
         // 显示和布局
-        'display': ['block', 'inline', 'inline-block', 'flex', 'inline-flex', 'grid', 'inline-grid', 
-                   'table', 'table-cell', 'table-row', 'table-column', 'list-item', 'none'],
+        'display': ['block', 'inline', 'inline-block', 'flex', 'inline-flex', 'grid', 'inline-grid',
+          'table', 'table-cell', 'table-row', 'table-column', 'list-item', 'none'],
         'position': ['static', 'relative', 'absolute', 'fixed', 'sticky'],
         'float': ['left', 'right', 'none'],
         'clear': ['left', 'right', 'both', 'none'],
@@ -238,8 +240,8 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
         'font-weight': ['normal', 'bold', 'bolder', 'lighter', '100', '200', '300', '400', '500', '600', '700', '800', '900'],
         'font-style': ['normal', 'italic', 'oblique'],
         'font-variant': ['normal', 'small-caps'],
-        'font-stretch': ['normal', 'ultra-condensed', 'extra-condensed', 'condensed', 'semi-condensed', 
-                        'semi-expanded', 'expanded', 'extra-expanded', 'ultra-expanded'],
+        'font-stretch': ['normal', 'ultra-condensed', 'extra-condensed', 'condensed', 'semi-condensed',
+          'semi-expanded', 'expanded', 'extra-expanded', 'ultra-expanded'],
 
         // 背景相关
         'background-repeat': ['repeat', 'repeat-x', 'repeat-y', 'no-repeat', 'space', 'round'],
@@ -265,14 +267,14 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
         'align-content': ['stretch', 'flex-start', 'flex-end', 'center', 'space-between', 'space-around'],
         'align-self': ['auto', 'stretch', 'flex-start', 'flex-end', 'center', 'baseline'],
 
-                 // Grid
-         'grid-auto-flow': ['row', 'column', 'dense'],
-         'justify-items': ['start', 'end', 'center', 'stretch'],
-         'justify-self': ['auto', 'start', 'end', 'center', 'stretch'],
+        // Grid
+        'grid-auto-flow': ['row', 'column', 'dense'],
+        'justify-items': ['start', 'end', 'center', 'stretch'],
+        'justify-self': ['auto', 'start', 'end', 'center', 'stretch'],
 
         // 列表相关
-        'list-style-type': ['disc', 'circle', 'square', 'decimal', 'decimal-leading-zero', 'lower-roman', 
-                           'upper-roman', 'lower-greek', 'lower-latin', 'upper-latin', 'armenian', 'georgian', 'none'],
+        'list-style-type': ['disc', 'circle', 'square', 'decimal', 'decimal-leading-zero', 'lower-roman',
+          'upper-roman', 'lower-greek', 'lower-latin', 'upper-latin', 'armenian', 'georgian', 'none'],
         'list-style-position': ['inside', 'outside'],
 
         // 表格相关
@@ -293,17 +295,17 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
         'transition-timing-function': ['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'step-start', 'step-end'],
 
         // 用户界面
-        'cursor': ['auto', 'default', 'pointer', 'text', 'wait', 'help', 'move', 'crosshair', 'not-allowed', 
-                  'grab', 'grabbing', 'zoom-in', 'zoom-out', 'copy', 'alias', 'context-menu', 'cell', 
-                  'vertical-text', 'alias', 'progress', 'no-drop', 'col-resize', 'row-resize'],
+        'cursor': ['auto', 'default', 'pointer', 'text', 'wait', 'help', 'move', 'crosshair', 'not-allowed',
+          'grab', 'grabbing', 'zoom-in', 'zoom-out', 'copy', 'alias', 'context-menu', 'cell',
+          'vertical-text', 'alias', 'progress', 'no-drop', 'col-resize', 'row-resize'],
         'pointer-events': ['auto', 'none', 'visiblePainted', 'visibleFill', 'visibleStroke', 'visible', 'painted', 'fill', 'stroke', 'all'],
         'user-select': ['auto', 'text', 'none', 'contain', 'all'],
 
         // 颜色和透明度
-        'color': ['red', 'blue', 'green', 'black', 'white', 'gray', 'yellow', 'orange', 'purple', 'pink', 
-                 'brown', 'cyan', 'magenta', 'lime', 'navy', 'teal', 'silver', 'transparent', 'currentColor'],
-        'background-color': ['transparent', 'white', 'black', 'red', 'blue', 'green', 'gray', 'yellow', 
-                            'orange', 'purple', 'pink', 'brown', 'cyan', 'magenta', 'lime', 'navy', 'teal', 'silver'],
+        'color': ['red', 'blue', 'green', 'black', 'white', 'gray', 'yellow', 'orange', 'purple', 'pink',
+          'brown', 'cyan', 'magenta', 'lime', 'navy', 'teal', 'silver', 'transparent', 'currentColor'],
+        'background-color': ['transparent', 'white', 'black', 'red', 'blue', 'green', 'gray', 'yellow',
+          'orange', 'purple', 'pink', 'brown', 'cyan', 'magenta', 'lime', 'navy', 'teal', 'silver'],
         'border-color': ['transparent', 'currentColor', 'red', 'blue', 'green', 'black', 'white', 'gray'],
 
         // CSS Grid特定属性
@@ -318,9 +320,9 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
         // 其他常用属性
         'object-fit': ['fill', 'contain', 'cover', 'none', 'scale-down'],
         'object-position': ['left', 'center', 'right', 'top', 'bottom'],
-        'mix-blend-mode': ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 
-                          'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 
-                          'saturation', 'color', 'luminosity'],
+        'mix-blend-mode': ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge',
+          'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue',
+          'saturation', 'color', 'luminosity'],
         'isolation': ['auto', 'isolate'],
         'writing-mode': ['horizontal-tb', 'vertical-rl', 'vertical-lr'],
         'text-orientation': ['mixed', 'upright', 'sideways']
@@ -333,10 +335,10 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
     const getCSSFunctions = (prop: string): string[] => {
       const functions: { [key: string]: string[] } = {
         'background-image': ['url()', 'linear-gradient()', 'radial-gradient()', 'repeating-linear-gradient()', 'repeating-radial-gradient()'],
-        'transform': ['translate()', 'translateX()', 'translateY()', 'scale()', 'scaleX()', 'scaleY()', 
-                     'rotate()', 'skew()', 'skewX()', 'skewY()', 'matrix()', 'perspective()'],
-        'filter': ['blur()', 'brightness()', 'contrast()', 'grayscale()', 'hue-rotate()', 'invert()', 
-                  'opacity()', 'saturate()', 'sepia()', 'drop-shadow()'],
+        'transform': ['translate()', 'translateX()', 'translateY()', 'scale()', 'scaleX()', 'scaleY()',
+          'rotate()', 'skew()', 'skewX()', 'skewY()', 'matrix()', 'perspective()'],
+        'filter': ['blur()', 'brightness()', 'contrast()', 'grayscale()', 'hue-rotate()', 'invert()',
+          'opacity()', 'saturate()', 'sepia()', 'drop-shadow()'],
         'color': ['rgb()', 'rgba()', 'hsl()', 'hsla()', 'var()'],
         'background-color': ['rgb()', 'rgba()', 'hsl()', 'hsla()', 'var()'],
         'border-color': ['rgb()', 'rgba()', 'hsl()', 'hsla()', 'var()'],
@@ -380,7 +382,7 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
 
     // 对于未知属性，只提供最通用的值
     const fallbackValues = ['auto', 'none', 'inherit', 'initial', 'unset'];
-    const filteredFallback = fallbackValues.filter(value => 
+    const filteredFallback = fallbackValues.filter(value =>
       value.toLowerCase().startsWith(word.text.toLowerCase())
     );
 
@@ -404,50 +406,50 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
   const cssProperties = [
     // Font相关
     'font-size', 'font-weight', 'font-family', 'font-style', 'font-variant',
-    'font-stretch', 'font-size-adjust', 'line-height', 'text-align', 
+    'font-stretch', 'font-size-adjust', 'line-height', 'text-align',
     'text-decoration', 'text-transform', 'letter-spacing', 'word-spacing',
-    
+
     // Layout相关
     'display', 'position', 'top', 'right', 'bottom', 'left',
     'width', 'height', 'max-width', 'max-height', 'min-width', 'min-height',
     'box-sizing', 'overflow', 'overflow-x', 'overflow-y', 'z-index',
-    
+
     // Margin和Padding
     'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
     'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-    
+
     // Border相关
     'border', 'border-width', 'border-style', 'border-color', 'border-radius',
     'border-top', 'border-right', 'border-bottom', 'border-left',
-    
+
     // Background相关
     'background', 'background-color', 'background-image', 'background-size',
     'background-position', 'background-repeat', 'background-attachment',
-    
+
     // Flexbox
     'flex', 'flex-direction', 'flex-wrap', 'flex-flow', 'justify-content',
     'align-items', 'align-content', 'align-self', 'flex-grow', 'flex-shrink',
-    
+
     // Grid
     'grid', 'grid-template', 'grid-template-columns', 'grid-template-rows',
     'grid-gap', 'grid-column', 'grid-row', 'grid-area',
-    
+
     // Transform和Animation
     'transform', 'transform-origin', 'transition', 'transition-property',
     'transition-duration', 'transition-timing-function', 'transition-delay',
     'animation', 'animation-name', 'animation-duration', 'animation-timing-function',
     'opacity', 'visibility', 'cursor',
 
-    'color','white-space'
+    'color', 'white-space'
   ];
 
   // 根据输入的字符进行过滤和补全
-  const filteredProperties = cssProperties.filter(prop => 
+  const filteredProperties = cssProperties.filter(prop =>
     prop.toLowerCase().includes(word.text.toLowerCase())
   );
 
-  const cssSnippets = filteredProperties.map(prop => 
-    snippetCompletion(`${prop}: \${1};`, { 
+  const cssSnippets = filteredProperties.map(prop =>
+    snippetCompletion(`${prop}: \${1};`, {
       label: prop,
       type: 'property',
       boost: prop.startsWith(word.text) ? 10 : 0 // 前缀匹配优先级更高
@@ -464,7 +466,8 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
 export const cssAutocomplete = autocompletion({
   override: [cssSnippetCompletionSource, cssCompletionSource],
   defaultKeymap: true,
-  maxRenderedOptions: 50
+  maxRenderedOptions: 50,
+  activateOnTyping: true
 });
 
 
@@ -538,7 +541,7 @@ export const jsSnippetCompletionSource: CompletionSource = (context: CompletionC
     snippetCompletion('function* ${1:generatorName}(${2:params}) {\n\t${3}\n}', { label: 'generator function' }),
     snippetCompletion('async function ${1:functionName}(${2:params}) {\n\t${3}\n}', { label: 'async function' }),
     snippetCompletion('const ${1:functionName} = async (${2:params}) => {\n\t${3}\n}', { label: 'async arrow function' }),
-    
+
     // 控制流
     snippetCompletion('if (${1:condition}) {\n\t${2}\n}', { label: 'if' }),
     snippetCompletion('if (${1:condition}) {\n\t${2}\n} else {\n\t${3}\n}', { label: 'if else' }),
@@ -548,12 +551,12 @@ export const jsSnippetCompletionSource: CompletionSource = (context: CompletionC
     snippetCompletion('for (const ${1:key} in ${2:object}) {\n\t${3}\n}', { label: 'for in' }),
     snippetCompletion('while (${1:condition}) {\n\t${2}\n}', { label: 'while' }),
     snippetCompletion('do {\n\t${1}\n} while (${2:condition});', { label: 'do while' }),
-    
+
     // 类和对象
     snippetCompletion('class ${1:ClassName} {\n\tconstructor(${2:params}) {\n\t\t${3}\n\t}\n}', { label: 'class' }),
     snippetCompletion('class ${1:ClassName} extends ${2:ParentClass} {\n\tconstructor(${3:params}) {\n\t\tsuper(${4});\n\t\t${5}\n\t}\n}', { label: 'class extends' }),
     snippetCompletion('const ${1:objectName} = {\n\t${2:property}: ${3:value}\n}', { label: 'object' }),
-    
+
     // 异步处理
     snippetCompletion('try {\n\t${1}\n} catch (${2:error}) {\n\t${3}\n}', { label: 'try catch' }),
     snippetCompletion('try {\n\t${1}\n} catch (${2:error}) {\n\t${3}\n} finally {\n\t${4}\n}', { label: 'try catch finally' }),
@@ -561,7 +564,7 @@ export const jsSnippetCompletionSource: CompletionSource = (context: CompletionC
     snippetCompletion('Promise.reject(${1:error})', { label: 'Promise.reject' }),
     snippetCompletion('Promise((resolve, reject) => {\n\t${1}\n})', { label: 'Promise' }),
     snippetCompletion('await ${1:promise}', { label: 'await' }),
-    
+
     // 数组和对象方法
     snippetCompletion('${1:array}.map((${2:item}) => ${3})', { label: 'array map' }),
     snippetCompletion('${1:array}.filter((${2:item}) => ${3})', { label: 'array filter' }),
@@ -570,7 +573,7 @@ export const jsSnippetCompletionSource: CompletionSource = (context: CompletionC
     snippetCompletion('Object.keys(${1:object})', { label: 'Object.keys' }),
     snippetCompletion('Object.values(${1:object})', { label: 'Object.values' }),
     snippetCompletion('Object.entries(${1:object})', { label: 'Object.entries' }),
-    
+
     // 常用语句
     snippetCompletion('console.log(${1:message})', { label: 'console.log' }),
     snippetCompletion('console.error(${1:message})', { label: 'console.error' }),
@@ -581,7 +584,7 @@ export const jsSnippetCompletionSource: CompletionSource = (context: CompletionC
     snippetCompletion('const ${1:variableName} = ${2:value}', { label: 'const' }),
     snippetCompletion('let ${1:variableName} = ${2:value}', { label: 'let' }),
     snippetCompletion('var ${1:variableName} = ${2:value}', { label: 'var' }),
-    
+
     // 模块相关
     snippetCompletion('import ${1:module} from \'${2:path}\'', { label: 'import' }),
     snippetCompletion('import { ${1:export} } from \'${2:path}\'', { label: 'import named' }),
@@ -589,7 +592,7 @@ export const jsSnippetCompletionSource: CompletionSource = (context: CompletionC
     snippetCompletion('export default ${1:value}', { label: 'export default' }),
     snippetCompletion('export { ${1:export} }', { label: 'export named' }),
     snippetCompletion('export const ${1:name} = ${2:value}', { label: 'export const' }),
-    
+
     // 模板字符串
     snippetCompletion('`${1:content}`', { label: 'template literal' }),
     snippetCompletion('`${1:content} ${2:${expression}}`', { label: 'template with expression' })
@@ -625,7 +628,7 @@ export const reactSnippetCompletionSource: CompletionSource = (context: Completi
     snippetCompletion('const ${1:ComponentName} = (${2:props}) => {\n\treturn (\n\t\t${3}\n\t);\n}', { label: 'react arrow component' }),
     snippetCompletion('class ${1:ComponentName} extends React.Component {\n\trender() {\n\t\treturn (\n\t\t\t${2}\n\t\t);\n\t}\n}', { label: 'react class component' }),
     snippetCompletion('const ${1:ComponentName} = React.memo((${2:props}) => {\n\treturn (\n\t\t${3}\n\t);\n});', { label: 'react memo component' }),
-    
+
     // Hooks
     snippetCompletion('const [${1:state}, set${1/(.*)/${1:/capitalize}/}] = useState(${2:initialValue})', { label: 'useState' }),
     snippetCompletion('useEffect(() => {\n\t${1}\n}, [${2:dependencies}])', { label: 'useEffect' }),
@@ -635,7 +638,7 @@ export const reactSnippetCompletionSource: CompletionSource = (context: Completi
     snippetCompletion('const ${1:memoizedValue} = useMemo(() => {\n\t${2}\n}, [${3:dependencies}])', { label: 'useMemo' }),
     snippetCompletion('const ${1:context} = useContext(${2:Context})', { label: 'useContext' }),
     snippetCompletion('const ${1:reducer} = useReducer(${2:reducer}, ${3:initialState})', { label: 'useReducer' }),
-    
+
     // JSX 元素
     snippetCompletion('<${1:div}>\n\t${2}\n</${1:div}>', { label: 'jsx element' }),
     snippetCompletion('<${1:Component} ${2:props}>\n\t${3}\n</${1:Component}>', { label: 'jsx component' }),
@@ -643,21 +646,21 @@ export const reactSnippetCompletionSource: CompletionSource = (context: Completi
     snippetCompletion('<${1:div} style={{ ${2:styles} }}>\n\t${3}\n</${1:div}>', { label: 'jsx with style' }),
     snippetCompletion('<${1:input} type="${2:text}" value={${3:value}} onChange={${4:handleChange}} />', { label: 'jsx input' }),
     snippetCompletion('<${1:button} onClick={${2:handleClick}}>\n\t${3}\n</${1:button}>', { label: 'jsx button' }),
-    
+
     // 条件渲染
     snippetCompletion('{${1:condition} && (\n\t${2}\n)}', { label: 'conditional render' }),
     snippetCompletion('{${1:condition} ? (\n\t${2}\n) : (\n\t${3}\n)}', { label: 'ternary render' }),
     snippetCompletion('{${1:items}.map((${2:item}, ${3:index}) => (\n\t<${4:div} key={${3:index}}>\n\t\t${5}\n\t</${4:div}>\n))}', { label: 'map render' }),
-    
+
     // 事件处理
     snippetCompletion('const handle${1:Event} = (${2:event}) => {\n\t${3}\n}', { label: 'event handler' }),
     snippetCompletion('const handle${1:Event} = useCallback((${2:event}) => {\n\t${3}\n}, [${4:dependencies}])', { label: 'event handler with callback' }),
-    
+
     // 导入导出
     snippetCompletion('import React from \'react\'', { label: 'import React' }),
     snippetCompletion('import React, { ${1:hook} } from \'react\'', { label: 'import React with hook' }),
     snippetCompletion('export default ${1:ComponentName}', { label: 'export default component' }),
-    
+
     // 常用模式
     snippetCompletion('const ${1:ComponentName} = ({ ${2:props} }) => {\n\t${3}\n}', { label: 'destructured props' }),
     snippetCompletion('const { ${1:prop1}, ${2:prop2} } = ${3:props}', { label: 'destructure props' }),
@@ -699,27 +702,27 @@ export const vueSnippetCompletionSource: CompletionSource = (context: Completion
     snippetCompletion('const { watch } = Vue', { label: 'import watch' }),
     snippetCompletion('const { onMounted } = Vue', { label: 'import onMounted' }),
     snippetCompletion('const { onUnmounted } = Vue', { label: 'import onUnmounted' }),
-    
+
     // 响应式数据
     snippetCompletion('const ${1:count} = ref(${2:0})', { label: 'ref' }),
     snippetCompletion('const ${1:state} = reactive({\n\t${2:property}: ${3:value}\n})', { label: 'reactive' }),
     snippetCompletion('const ${1:computedValue} = computed(() => {\n\t${2}\n})', { label: 'computed' }),
-    
+
     // 生命周期
     snippetCompletion('onMounted(() => {\n\t${1}\n})', { label: 'onMounted' }),
     snippetCompletion('onUnmounted(() => {\n\t${1}\n})', { label: 'onUnmounted' }),
     snippetCompletion('onUpdated(() => {\n\t${1}\n})', { label: 'onUpdated' }),
     snippetCompletion('onBeforeMount(() => {\n\t${1}\n})', { label: 'onBeforeMount' }),
     snippetCompletion('onBeforeUnmount(() => {\n\t${1}\n})', { label: 'onBeforeUnmount' }),
-    
+
     // 监听器
     snippetCompletion('watch(${1:source}, (${2:newValue}, ${3:oldValue}) => {\n\t${4}\n})', { label: 'watch' }),
     snippetCompletion('watchEffect(() => {\n\t${1}\n})', { label: 'watchEffect' }),
-    
+
     // 组件定义
     snippetCompletion('const component = {\n\tsetup() {\n\t\t${1}\n\t\treturn {\n\t\t\t${2}\n\t\t}\n\t},\n\ttemplate: `${3}`\n}', { label: 'vue component' }),
     snippetCompletion('const component = {\n\tsetup() {\n\t\t${1}\n\t},\n\ttemplate: `${2}`\n}', { label: 'vue component simple' }),
-    
+
     // 模板语法
     snippetCompletion('{{ ${1:expression} }}', { label: 'template expression' }),
     snippetCompletion('v-if="${1:condition}"', { label: 'v-if' }),
@@ -731,15 +734,15 @@ export const vueSnippetCompletionSource: CompletionSource = (context: Completion
     snippetCompletion('v-on:${1:click}="${2:handler}"', { label: 'v-on' }),
     snippetCompletion('@${1:click}="${2:handler}"', { label: 'v-on shorthand' }),
     snippetCompletion('v-model="${1:value}"', { label: 'v-model' }),
-    
+
     // 事件处理
     snippetCompletion('const handle${1:Event} = () => {\n\t${2}\n}', { label: 'event handler' }),
     snippetCompletion('const handle${1:Event} = (${2:event}) => {\n\t${3}\n}', { label: 'event handler with event' }),
-    
+
     // 常用方法
     snippetCompletion('const ${1:methodName} = () => {\n\t${2}\n}', { label: 'method' }),
     snippetCompletion('const ${1:methodName} = async () => {\n\t${2}\n}', { label: 'async method' }),
-    
+
     // 响应式更新
     snippetCompletion('${1:count}.value = ${2:newValue}', { label: 'update ref' }),
     snippetCompletion('${1:state}.${2:property} = ${3:newValue}', { label: 'update reactive' })
@@ -776,58 +779,58 @@ export const tsSnippetCompletionSource: CompletionSource = (context: CompletionC
     snippetCompletion('interface ${1:InterfaceName} extends ${2:BaseInterface} {\n\t${3:property}: ${4:string}\n}', { label: 'interface extends' }),
     snippetCompletion('enum ${1:EnumName} {\n\t${2:VALUE} = ${3:value}\n}', { label: 'enum' }),
     snippetCompletion('const enum ${1:EnumName} {\n\t${2:VALUE} = ${3:value}\n}', { label: 'const enum' }),
-    
+
     // 泛型
     snippetCompletion('function ${1:functionName}<${2:T}>(param: ${2:T}): ${2:T} {\n\t${3}\n}', { label: 'generic function' }),
     snippetCompletion('class ${1:ClassName}<${2:T}> {\n\tprivate value: ${2:T};\n\tconstructor(value: ${2:T}) {\n\t\tthis.value = value;\n\t}\n}', { label: 'generic class' }),
     snippetCompletion('interface ${1:InterfaceName}<${2:T}> {\n\tvalue: ${2:T};\n}', { label: 'generic interface' }),
-    
+
     // 类型断言和类型守卫
     snippetCompletion('const ${1:value} = ${2:expression} as ${3:string}', { label: 'type assertion' }),
     snippetCompletion('const ${1:value} = <${2:string}>${3:expression}', { label: 'type assertion angle' }),
     snippetCompletion('if (typeof ${1:value} === \'${2:string}\') {\n\t${3}\n}', { label: 'typeof guard' }),
     snippetCompletion('if (${1:value} instanceof ${2:Constructor}) {\n\t${3}\n}', { label: 'instanceof guard' }),
     snippetCompletion('function is${1:Type}(${2:value}: any): ${2:value} is ${1:Type} {\n\t${3}\n}', { label: 'type guard function' }),
-    
+
     // 函数类型
     snippetCompletion('const ${1:functionName}: (${2:param}: ${3:string}) => ${4:string} = (${2:param}) => {\n\t${5}\n}', { label: 'function type annotation' }),
     snippetCompletion('type ${1:FunctionType} = (${2:param}: ${3:string}) => ${4:string}', { label: 'function type' }),
     snippetCompletion('interface ${1:InterfaceName} {\n\t${2:method}: (${3:param}: ${4:string}) => ${5:string};\n}', { label: 'method in interface' }),
-    
+
     // 联合类型和交叉类型
     snippetCompletion('type ${1:UnionType} = ${2:string} | ${3:number}', { label: 'union type' }),
     snippetCompletion('type ${1:IntersectionType} = ${2:Type1} & ${3:Type2}', { label: 'intersection type' }),
     snippetCompletion('type ${1:OptionalType} = {\n\t${2:required}: ${3:string};\n\t${4:optional}?: ${5:string};\n}', { label: 'optional properties' }),
-    
+
     // 映射类型
     snippetCompletion('type ${1:MappedType}<${2:T}> = {\n\t[K in keyof ${2:T}]: ${2:T}[K];\n}', { label: 'mapped type' }),
     snippetCompletion('type ${1:PartialType}<${2:T}> = Partial<${2:T}>', { label: 'partial type' }),
     snippetCompletion('type ${1:RequiredType}<${2:T}> = Required<${2:T}>', { label: 'required type' }),
     snippetCompletion('type ${1:PickType}<${2:T}, ${3:K}> = Pick<${2:T}, ${3:K}>', { label: 'pick type' }),
     snippetCompletion('type ${1:OmitType}<${2:T}, ${3:K}> = Omit<${2:T}, ${3:K}>', { label: 'omit type' }),
-    
+
     // 条件类型
     snippetCompletion('type ${1:ConditionalType}<${2:T}> = ${2:T} extends ${3:string} ? ${4:true} : ${5:false}', { label: 'conditional type' }),
     snippetCompletion('type ${1:InferType}<${2:T}> = ${2:T} extends infer ${3:U} ? ${3:U} : never', { label: 'infer type' }),
-    
+
     // 工具类型
     snippetCompletion('type ${1:NullableType} = ${2:string} | null | undefined', { label: 'nullable type' }),
     snippetCompletion('type ${1:ReadonlyType}<${2:T}> = Readonly<${2:T}>', { label: 'readonly type' }),
     snippetCompletion('type ${1:RecordType} = Record<${2:string}, ${3:any}>', { label: 'record type' }),
-    
+
     // 模块声明
     snippetCompletion('declare module \'${1:module-name}\' {\n\t${2}\n}', { label: 'declare module' }),
     snippetCompletion('declare global {\n\t${1}\n}', { label: 'declare global' }),
     snippetCompletion('declare namespace ${1:Namespace} {\n\t${2}\n}', { label: 'declare namespace' }),
-    
+
     // 装饰器
     snippetCompletion('@${1:decorator}(${2:options})\n${3:class} ${4:ClassName} {\n\t${5}\n}', { label: 'decorator class' }),
     snippetCompletion('@${1:decorator}(${2:options})\n${3:method} ${4:methodName}() {\n\t${5}\n}', { label: 'decorator method' }),
-    
+
     // 异步类型
     snippetCompletion('const ${1:asyncFunction}: () => Promise<${2:string}> = async () => {\n\t${3}\n}', { label: 'async function type' }),
     snippetCompletion('type ${1:AsyncType} = Promise<${2:string}>', { label: 'promise type' }),
-    
+
     // 常用模式
     snippetCompletion('const ${1:variable}: ${2:string} = ${3:value}', { label: 'typed variable' }),
     snippetCompletion('function ${1:functionName}(${2:param}: ${3:string}): ${4:string} {\n\t${5}\n}', { label: 'typed function' }),
@@ -845,21 +848,24 @@ export const tsSnippetCompletionSource: CompletionSource = (context: CompletionC
 export const jsAutocomplete = autocompletion({
   override: [jsSnippetCompletionSource],
   defaultKeymap: true,
-  maxRenderedOptions: 50
+  maxRenderedOptions: 50,
+  activateOnTyping: true
 });
 
 // React 自动补全
 export const reactAutocomplete = autocompletion({
   override: [reactSnippetCompletionSource],
   defaultKeymap: true,
-  maxRenderedOptions: 50
+  maxRenderedOptions: 50,
+  activateOnTyping: true
 });
 
 // Vue 自动补全
 export const vueAutocomplete = autocompletion({
   override: [vueSnippetCompletionSource],
   defaultKeymap: true,
-  maxRenderedOptions: 50
+  maxRenderedOptions: 50,
+  activateOnTyping: true
 });
 
 // TypeScript 自动补全
@@ -867,4 +873,7 @@ export const tsAutocomplete = autocompletion({
   override: [tsSnippetCompletionSource],
   defaultKeymap: true,
   maxRenderedOptions: 50
-}); 
+});
+
+// 导出所有keymap供编辑器使用
+export { completionKeymap, closeBracketsKeymap }; 
