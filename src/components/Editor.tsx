@@ -50,7 +50,7 @@ import {
     bracketMatchingExtension,
     closeBracketsExtension
 } from '../services/autocompleteService';
-import { runtimeErrorExtension, addRuntimeErrorsToEditor, clearRuntimeErrorsFromEditor } from '../services/lintService';
+import { runtimeErrorExtension, addRuntimeErrorsToEditor, clearRuntimeErrorsFromEditor, jsLint, htmlLint, cssLint, errorDecorationField } from '../services/lintService';
 
 // 创建编辑器的辅助函数
 const createEditor = (
@@ -196,9 +196,35 @@ const Editor: React.FC = () => {
     const [shouldReinitializeEditors, setShouldReinitializeEditors] = useState(false);
     const [isPenLoaded, setIsPenLoaded] = useState(false); // 添加状态跟踪Pen是否已加载
 
+    // 静态错误状态
+    const [hasStaticErrors, setHasStaticErrors] = useState(false);
 
+    // 检查静态错误（如lint）
+    const checkStaticErrors = useCallback(() => {
+        if (!jsEditor) return;
+        try {
+            // 获取当前编辑器的错误装饰
+            const decorations = jsEditor.state.field(errorDecorationField, false);
+            const hasError = Boolean(decorations && decorations.size > 0);
+            const previousHasStaticErrors = hasStaticErrors;
+            setHasStaticErrors(hasError);
 
-    // 运行时错误处理
+            // 如果静态错误状态发生变化
+            if (previousHasStaticErrors !== hasError) {
+                if (!hasError) {
+                    // 静态错误被修复，清除运行时错误
+                    clearRuntimeErrorsFromEditor(jsEditor);
+                } else {
+                    // 出现新的静态错误，清除运行时错误
+                    clearRuntimeErrorsFromEditor(jsEditor);
+                }
+            }
+        } catch (e) {
+            setHasStaticErrors(false);
+        }
+    }, [jsEditor, hasStaticErrors]);
+
+    // 运行时错误处理（静态错误优先）
     const handleRuntimeError = useCallback((errors: Array<{
         line: number;
         column: number;
@@ -206,13 +232,25 @@ const Editor: React.FC = () => {
         severity: 'error' | 'warning';
     }>) => {
         if (jsEditor) {
-            if (errors.length > 0) {
-                addRuntimeErrorsToEditor(jsEditor, errors);
+            if (!hasStaticErrors) {
+                if (errors.length > 0) {
+                    addRuntimeErrorsToEditor(jsEditor, errors);
+                } else {
+                    clearRuntimeErrorsFromEditor(jsEditor);
+                }
             } else {
+                // 有静态错误时，始终清除运行时错误高亮
                 clearRuntimeErrorsFromEditor(jsEditor);
             }
         }
-    }, [jsEditor]);
+    }, [jsEditor, hasStaticErrors]);
+
+    // 编辑器内容变化时，先检测静态错误
+    useEffect(() => {
+        if (jsEditor) {
+            checkStaticErrors();
+        }
+    }, [jsEditor, jsCode, checkStaticErrors]);
 
     // 导入 pen 的辅助函数
     const toggleCssPen = (penId: string) => {
@@ -349,7 +387,7 @@ const Editor: React.FC = () => {
         const defaultHtml = '<div id="app">Hello World</div>';
         const defaultCss = 'body { color: blue; }';
         const defaultJs = jsLanguage === 'react'
-            ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
+            ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nroot.render(<App />);'
             : jsLanguage === 'vue'
                 ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
                 : jsLanguage === 'ts'
@@ -372,7 +410,7 @@ const Editor: React.FC = () => {
         if (!currentPen) {
             // 只有在新建状态下才更新默认代码
             const defaultJs = jsLanguage === 'react'
-                ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
+                ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nroot.render(<App />);'
                 : jsLanguage === 'vue'
                     ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
                     : jsLanguage === 'ts'
@@ -445,19 +483,18 @@ const Editor: React.FC = () => {
         }
     }, [params.id, userPens.length, loadPenById, initializeNewPen]);
 
-    // 初始化编辑器或重新初始化以响应语言变化
+    // 统一的编辑器初始化逻辑
     useEffect(() => {
-        // 只有在Pen加载完成后才初始化编辑器
-        if (!isPenLoaded) return;
+        // 只有在Pen加载完成或需要重新初始化时才创建编辑器
+        if (!isPenLoaded && !shouldReinitializeEditors) return;
 
-        // Initialize editors only once
         const htmlElement = document.getElementById('html-editor');
         const cssElement = document.getElementById('css-editor');
         const jsElement = document.getElementById('js-editor');
 
         if (!htmlElement || !cssElement || !jsElement) return;
 
-        // Destroy existing editors before creating new ones
+        // 清理现有编辑器
         if (htmlEditor) {
             htmlEditor.destroy();
             setHtmlEditor(null);
@@ -480,49 +517,65 @@ const Editor: React.FC = () => {
         setIsUpdatingFromState(true);
 
         // 创建新编辑器
-        const newHtmlEditor = createEditor(htmlElement, html(), setHtmlEditor, setHtmlCode, htmlCode, true, htmlAutocomplete);
-        const newCssEditor = createEditor(cssElement, css(), setCssEditor, setCssCode, cssCode, true, cssAutocomplete);
+        createEditor(
+            htmlElement,
+            html(),
+            setHtmlEditor,
+            setHtmlCode,
+            htmlCode,
+            true,
+            htmlAutocomplete,
+            htmlLint
+        );
 
-        // 根据JavaScript语言选择对应的扩展和自动补全
-        let jsExtension: Extension;
-        let jsAutocompleteExt: Extension;
+        createEditor(
+            cssElement,
+            css(),
+            setCssEditor,
+            setCssCode,
+            cssCode,
+            true,
+            cssAutocomplete,
+            cssLint
+        );
 
-        switch (jsLanguage) {
-            case 'react':
-                jsExtension = javascript({ typescript: true });
-                jsAutocompleteExt = reactAutocomplete;
-                break;
-            case 'vue':
-                jsExtension = vue();
-                jsAutocompleteExt = vueAutocomplete;
-                break;
-            case 'ts':
-                jsExtension = javascript({ typescript: true });
-                jsAutocompleteExt = tsAutocomplete;
-                break;
-            case 'js':
-            default:
-                jsExtension = javascript();
-                jsAutocompleteExt = jsAutocomplete;
-                break;
-        }
+        const jsLangExt = jsLanguage === 'react' ? javascript({ jsx: true }) :
+            jsLanguage === 'vue' ? vue() :
+                jsLanguage === 'ts' ? javascript({ typescript: true }) :
+                    javascript();
 
-        const newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, true, jsAutocompleteExt, runtimeErrorExtension);
+        const jsAutocompleteExt = jsLanguage === 'react' ? reactAutocomplete :
+            jsLanguage === 'vue' ? vueAutocomplete :
+                jsLanguage === 'ts' ? tsAutocomplete :
+                    jsAutocomplete;
 
-        // 重置重新初始化标志
-        setShouldReinitializeEditors(false);
+        createEditor(
+            jsElement,
+            jsLangExt,
+            setJsEditor,
+            setJsCode,
+            jsCode,
+            true,
+            jsAutocompleteExt,
+            jsLint
+        );
 
         // 延迟重置isUpdatingFromState标志，确保编辑器完全初始化
         setTimeout(() => {
             setIsUpdatingFromState(false);
         }, 100);
 
+        // 重置重新初始化标志
+        if (shouldReinitializeEditors) {
+            setShouldReinitializeEditors(false);
+        }
+
         return () => {
-            newHtmlEditor?.destroy();
-            newCssEditor?.destroy();
-            newJsEditor?.destroy();
+            if (htmlEditor) htmlEditor.destroy();
+            if (cssEditor) cssEditor.destroy();
+            if (jsEditor) jsEditor.destroy();
         };
-    }, [shouldReinitializeEditors, jsLanguage, isPenLoaded]); // 移除代码内容依赖，避免无限循环
+    }, [isPenLoaded, shouldReinitializeEditors, jsLanguage]); // 统一的依赖项
 
     // 当React state变化时，同步更新编辑器内容（不重建编辑器）
     useEffect(() => {
@@ -831,13 +884,13 @@ const Editor: React.FC = () => {
         if (!currentPen) {
             const currentJs = jsEditor?.state.doc.toString() || jsCode;
             const isDefaultJs = currentJs === 'console.log("Hello World");' ||
-                currentJs === 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));' ||
+                currentJs === 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nroot.render(<App />);' ||
                 currentJs === 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");' ||
                 currentJs === 'console.log("Hello TypeScript!");';
 
             if (isDefaultJs) {
                 const defaultJs = newLanguage === 'react'
-                    ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
+                    ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nroot.render(<App />);'
                     : newLanguage === 'vue'
                         ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
                         : newLanguage === 'ts'
@@ -1515,6 +1568,7 @@ const Editor: React.FC = () => {
                                 js={mergedJs}
                                 jsLanguage={jsLanguage}
                                 onRuntimeError={handleRuntimeError}
+                                hasStaticErrors={hasStaticErrors}
                             />
                         )}
                     </PreviewContainer>
