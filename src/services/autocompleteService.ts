@@ -1,5 +1,6 @@
 import { htmlCompletionSource } from '@codemirror/lang-html';
 import { cssCompletionSource } from '@codemirror/lang-css';
+import { less } from '@codemirror/lang-less';
 import { javascriptLanguage } from '@codemirror/lang-javascript';
 import { bracketMatching } from '@codemirror/language';//括号匹配高亮
 import { autocompletion, CompletionContext, CompletionSource, snippetCompletion } from '@codemirror/autocomplete';
@@ -18,6 +19,18 @@ const selfClosingTags = [
   'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'
 ];
 
+//属性名
+const commonAttributes = [
+  'class', 'id', 'style', 'title', 'alt', 'src', 'href', 'type', 'name', 'value',
+  'placeholder', 'required', 'disabled', 'readonly', 'maxlength', 'minlength',
+  'pattern', 'autocomplete', 'autofocus', 'form', 'list', 'multiple', 'size',
+  'step', 'min', 'max', 'checked', 'selected', 'hidden', 'target', 'rel',
+  'download', 'hreflang', 'media', 'sizes', 'integrity', 'crossorigin',
+  'async', 'defer', 'charset', 'content', 'http-equiv', 'name', 'property',
+  'data-', 'aria-', 'role', 'tabindex', 'accesskey', 'draggable', 'spellcheck',
+  'contenteditable', 'translate', 'dir', 'lang', 'xml:lang', 'xml:space'
+];
+
 // HTML 标签补全源（支持输入部分标签名补全）
 export const htmlTagCompletionSource: CompletionSource = (context: CompletionContext) => {
   const word = context.matchBefore(/\w*/);
@@ -33,21 +46,49 @@ export const htmlTagCompletionSource: CompletionSource = (context: CompletionCon
     return null; // 在注释中不提供补全
   }
 
+  const attributeValueMatch = beforeCursor.match(/([a-zA-Z-]+)="([^"]*)$/);
+  if (attributeValueMatch) {
+    const attributeName = attributeValueMatch[1];
+    const valuePrefix = attributeValueMatch[2];
+
+    // 根据属性名提供相应的值
+    const getAttributeValues = (attr: string): string[] => {
+      switch (attr) {
+        case 'type':
+          return ['text', 'password', 'email', 'number', 'tel', 'url', 'date', 'time', 'checkbox', 'radio', 'submit', 'button'];
+        case 'target':
+          return ['_blank', '_self', '_parent', '_top'];
+        case 'rel':
+          return ['noopener', 'noreferrer', 'nofollow', 'external'];
+        case 'autocomplete':
+          return ['on', 'off', 'name', 'email', 'username', 'current-password', 'new-password'];
+        default:
+          return [];
+      }
+    };
+
+    const values = getAttributeValues(attributeName);
+    const matchingValues = values.filter(value => 
+      value.toLowerCase().startsWith(valuePrefix.toLowerCase())
+    );
+
+    if (matchingValues.length > 0) {
+      return {
+        from: word.from,
+        options: matchingValues.map(value => ({
+          label: value,
+          apply: value,
+          type: 'keyword'
+        }))
+      };
+    }
+  }
+
   // 检查是否在标签内（<tag> 或 <tag attr>）
   const inTag = /<[^>]*$/.test(beforeCursor);
 
   if (inTag) {
     // 在标签内提供属性补全，自动添加 ="" 
-    const commonAttributes = [
-      'class', 'id', 'style', 'title', 'alt', 'src', 'href', 'type', 'name', 'value',
-      'placeholder', 'required', 'disabled', 'readonly', 'maxlength', 'minlength',
-      'pattern', 'autocomplete', 'autofocus', 'form', 'list', 'multiple', 'size',
-      'step', 'min', 'max', 'checked', 'selected', 'hidden', 'target', 'rel',
-      'download', 'hreflang', 'media', 'sizes', 'integrity', 'crossorigin',
-      'async', 'defer', 'charset', 'content', 'http-equiv', 'name', 'property',
-      'data-', 'aria-', 'role', 'tabindex', 'accesskey', 'draggable', 'spellcheck',
-      'contenteditable', 'translate', 'dir', 'lang', 'xml:lang', 'xml:space'
-    ];
 
     const attributeSnippets = commonAttributes.map(attr => {
       if (attr === 'data-' || attr === 'aria-') {
@@ -460,9 +501,148 @@ export const cssSnippetCompletionSource: CompletionSource = (context: Completion
     validFor: /^[\w-]*$/
   };
 };
+
+// 增强的CSS实时补全源
+export const enhancedCssCompletionSource: CompletionSource = (context: CompletionContext) => {
+  const word = context.matchBefore(/\w*/);
+  if (!word || (word.from == word.to && !context.explicit)) return null;
+
+  const line = context.state.doc.lineAt(context.pos);
+  const beforeCursor = line.text.slice(0, context.pos - line.from);
+  const currentWord = word.text;
+
+  // 检查是否在注释中
+  const inComment = /\/\*.*\*\/$/.test(beforeCursor) || /\/\/.*$/.test(beforeCursor);
+  if (inComment) return null;
+
+  // 检查是否在字符串中
+  const inString = /["'][^"']*$/.test(beforeCursor);
+  if (inString) return null;
+
+  // 1. 检查是否在选择器中（如 .class-name）
+  const selectorMatch = beforeCursor.match(/([.#][a-zA-Z-]*)$/);
+  if (selectorMatch) {
+    const selectorPrefix = selectorMatch[1];
+    const commonSelectors = [
+      '.container', '.wrapper', '.header', '.footer', '.nav', '.main', '.sidebar',
+      '.content', '.button', '.btn', '.card', '.modal', '.form', '.input',
+      '.text', '.title', '.subtitle', '.link', '.image', '.icon', '.badge',
+      '#header', '#footer', '#nav', '#main', '#sidebar', '#content', '#form'
+    ];
+
+    const matchingSelectors = commonSelectors.filter(selector => 
+      selector.toLowerCase().startsWith(selectorPrefix.toLowerCase())
+    );
+
+    if (matchingSelectors.length > 0) {
+      return {
+        from: word.from,
+        options: matchingSelectors.map(selector => ({
+          label: selector,
+          apply: selector,
+          type: 'class'
+        }))
+      };
+    }
+  }
+
+  // 2. 检查是否在属性名中（如 display:）
+  const propertyMatch = beforeCursor.match(/([a-zA-Z-]*)\s*:\s*$/);
+  if (propertyMatch) {
+    const propertyPrefix = propertyMatch[1];
+    const commonProperties = [
+      'display', 'position', 'width', 'height', 'margin', 'padding', 'border',
+      'background', 'color', 'font', 'text', 'flex', 'grid', 'transform',
+      'transition', 'animation', 'opacity', 'visibility', 'z-index', 'overflow'
+    ];
+
+    const matchingProperties = commonProperties.filter(property => 
+      property.toLowerCase().startsWith(propertyPrefix.toLowerCase())
+    );
+
+    if (matchingProperties.length > 0) {
+      return {
+        from: word.from,
+        options: matchingProperties.map(property => ({
+          label: property,
+          apply: property,
+          type: 'property'
+        }))
+      };
+    }
+  }
+
+  // 3. 检查是否在属性值中（如 display: flex）
+  const valueMatch = beforeCursor.match(/([a-zA-Z-]+)\s*:\s*([a-zA-Z-]*)$/);
+  if (valueMatch) {
+    const propertyName = valueMatch[1];
+    const valuePrefix = valueMatch[2];
+
+    // 根据属性名提供相应的值
+    const getPropertyValues = (prop: string): string[] => {
+      switch (prop) {
+        case 'display':
+          return ['block', 'inline', 'inline-block', 'flex', 'grid', 'none', 'table', 'table-cell'];
+        case 'position':
+          return ['static', 'relative', 'absolute', 'fixed', 'sticky'];
+        case 'text-align':
+          return ['left', 'center', 'right', 'justify'];
+        case 'font-weight':
+          return ['normal', 'bold', 'bolder', 'lighter', '100', '200', '300', '400', '500', '600', '700', '800', '900'];
+        case 'border-style':
+          return ['none', 'solid', 'dashed', 'dotted', 'double', 'groove', 'ridge', 'inset', 'outset'];
+        case 'overflow':
+          return ['visible', 'hidden', 'scroll', 'auto'];
+        case 'cursor':
+          return ['default', 'pointer', 'text', 'move', 'not-allowed', 'wait', 'help'];
+        default:
+          return [];
+      }
+    };
+
+    const values = getPropertyValues(propertyName);
+    const matchingValues = values.filter(value => 
+      value.toLowerCase().startsWith(valuePrefix.toLowerCase())
+    );
+
+    if (matchingValues.length > 0) {
+      return {
+        from: word.from,
+        options: matchingValues.map(value => ({
+          label: value,
+          apply: value,
+          type: 'keyword'
+        }))
+      };
+    }
+  }
+
+  // 4. 检查是否在数字后需要单位
+  const numberMatch = beforeCursor.match(/(\d+(?:\.\d+)?)\s*$/);
+  if (numberMatch) {
+    const number = numberMatch[1];
+    const afterCursor = line.text.slice(context.pos - line.from);
+    const hasUnitAfter = /^[a-zA-Z%]+/.test(afterCursor);
+    
+    if (!hasUnitAfter) {
+      const units = ['px', 'rem', 'em', '%', 'vw', 'vh', 'pt', 'cm', 'mm', 'in'];
+      return {
+        from: context.pos,
+        options: units.map(unit => ({
+          label: `${number}${unit}`,
+          apply: unit,
+          type: 'unit'
+        }))
+      };
+    }
+  }
+
+  return null;
+};
+
 // CSS 自动补全（使用CodeMirror原生 + 自定义代码片段）
 export const cssAutocomplete = autocompletion({
-  override: [cssSnippetCompletionSource, cssCompletionSource],
+  override: [enhancedCssCompletionSource, cssSnippetCompletionSource, cssCompletionSource],
   defaultKeymap: true,
   maxRenderedOptions: 50
 });
@@ -842,7 +1022,13 @@ export const tsSnippetCompletionSource: CompletionSource = (context: CompletionC
 };
 
 // JavaScript 自动补全（使用CodeMirror原生 + 自定义代码片段）
-export const jsAutocomplete = autocompletion({
+// export const jsAutocomplete = autocompletion({
+//   override: [jsSnippetCompletionSource],
+//   defaultKeymap: true,
+//   maxRenderedOptions: 50
+// });
+// JavaScript 自动补全（包含AST补全）
+export const jsAutocompleteWithAST = autocompletion({
   override: [jsSnippetCompletionSource],
   defaultKeymap: true,
   maxRenderedOptions: 50
@@ -865,6 +1051,593 @@ export const vueAutocomplete = autocompletion({
 // TypeScript 自动补全
 export const tsAutocomplete = autocompletion({
   override: [tsSnippetCompletionSource],
+  defaultKeymap: true,
+  maxRenderedOptions: 50
+});
+
+// Less 代码片段补全源
+export const lessSnippetCompletionSource: CompletionSource = (context: CompletionContext) => {
+  const word = context.matchBefore(/\w*/);
+  if (!word || (word.from == word.to && !context.explicit)) return null;
+
+  const line = context.state.doc.lineAt(context.pos);
+  const beforeCursor = line.text.slice(0, context.pos - line.from);
+
+  // 检查是否在注释中
+  const inComment = /\/\*.*\*\/$/.test(beforeCursor) || /\/\/.*$/.test(beforeCursor);
+
+  if (inComment) {
+    return null; // 在注释中不提供补全
+  }
+
+  // 检查是否在字符串中
+  const inString = /["'][^"']*$/.test(beforeCursor);
+
+  if (inString) {
+    return null; // 在字符串中不提供补全
+  }
+
+  // Less 特有的代码片段
+  const lessSnippets = [
+    // 变量
+    snippetCompletion('@${1:variableName}: ${2:value};', { label: 'less variable' }),
+    snippetCompletion('@${1:variableName}: ${2:value} !important;', { label: 'less variable important' }),
+    
+    // 混合器 (Mixins)
+    snippetCompletion('.${1:mixinName}() {\n\t${2}\n}', { label: 'less mixin' }),
+    snippetCompletion('.${1:mixinName}(${2:param}) {\n\t${3}\n}', { label: 'less mixin with param' }),
+    snippetCompletion('.${1:mixinName}(${2:param}: ${3:defaultValue}) {\n\t${4}\n}', { label: 'less mixin with default' }),
+    snippetCompletion('.${1:mixinName}(${2:@param}) {\n\t${3}\n}', { label: 'less mixin with variable' }),
+    
+    // 混合器调用
+    snippetCompletion('.${1:mixinName}();', { label: 'call mixin' }),
+    snippetCompletion('.${1:mixinName}(${2:value});', { label: 'call mixin with param' }),
+    
+    // 嵌套规则
+    snippetCompletion('&:${1:hover} {\n\t${2}\n}', { label: 'less pseudo' }),
+    snippetCompletion('&.${1:className} {\n\t${2}\n}', { label: 'less class' }),
+    snippetCompletion('&[${1:attribute}] {\n\t${2}\n}', { label: 'less attribute' }),
+    
+    // 函数
+    snippetCompletion('lighten(${1:@color}, ${2:10%})', { label: 'lighten' }),
+    snippetCompletion('darken(${1:@color}, ${2:10%})', { label: 'darken' }),
+    snippetCompletion('saturate(${1:@color}, ${2:10%})', { label: 'saturate' }),
+    snippetCompletion('desaturate(${1:@color}, ${2:10%})', { label: 'desaturate' }),
+    snippetCompletion('fadein(${1:@color}, ${2:10%})', { label: 'fadein' }),
+    snippetCompletion('fadeout(${1:@color}, ${2:10%})', { label: 'fadeout' }),
+    snippetCompletion('spin(${1:@color}, ${2:10})', { label: 'spin' }),
+    snippetCompletion('mix(${1:@color1}, ${2:@color2}, ${3:50%})', { label: 'mix' }),
+    snippetCompletion('contrast(${1:@color})', { label: 'contrast' }),
+    
+    // 数学运算
+    snippetCompletion('${1:value} + ${2:value}', { label: 'less addition' }),
+    snippetCompletion('${1:value} - ${2:value}', { label: 'less subtraction' }),
+    snippetCompletion('${1:value} * ${2:value}', { label: 'less multiplication' }),
+    snippetCompletion('${1:value} / ${2:value}', { label: 'less division' }),
+    
+    // 条件语句
+    snippetCompletion('when (${1:condition}) {\n\t${2}\n}', { label: 'less when' }),
+    snippetCompletion('when not (${1:condition}) {\n\t${2}\n}', { label: 'less when not' }),
+    snippetCompletion('when (${1:condition}) and (${2:condition}) {\n\t${3}\n}', { label: 'less when and' }),
+    snippetCompletion('when (${1:condition}) or (${2:condition}) {\n\t${3}\n}', { label: 'less when or' }),
+    
+    // 循环
+    snippetCompletion('.loop(@${1:counter}) when (@${1:counter} > 0) {\n\t${2}\n\t.loop(@${1:counter} - 1);\n}', { label: 'less loop' }),
+    
+    // 导入
+    snippetCompletion('@import "${1:file.less}";', { label: 'less import' }),
+    snippetCompletion('@import (less) "${1:file.css}";', { label: 'less import css' }),
+    snippetCompletion('@import (reference) "${1:file.less}";', { label: 'less import reference' }),
+    snippetCompletion('@import (inline) "${1:file.less}";', { label: 'less import inline' }),
+    
+    // 命名空间
+    snippetCompletion('#${1:namespace}() {\n\t${2}\n}', { label: 'less namespace' }),
+    snippetCompletion('#${1:namespace} > .${2:mixin}();', { label: 'call namespace mixin' }),
+    
+    // 扩展
+    snippetCompletion('&:extend(.${1:class})', { label: 'less extend' }),
+    snippetCompletion('&:extend(.${1:class} all)', { label: 'less extend all' }),
+    
+    // 父选择器引用
+    snippetCompletion('& {\n\t${1}\n}', { label: 'less parent selector' }),
+    
+    // 变量插值
+    snippetCompletion('@{${1:variableName}}', { label: 'less variable interpolation' }),
+    
+    // 字符串插值
+    snippetCompletion('~"${1:@{variableName}}"', { label: 'less string interpolation' })
+  ];
+
+  return {
+    from: word.from,
+    options: lessSnippets,
+    validFor: /\w*/
+  };
+};
+
+// SCSS 代码片段补全源
+export const scssSnippetCompletionSource: CompletionSource = (context: CompletionContext) => {
+  const word = context.matchBefore(/\w*/);
+  if (!word || (word.from == word.to && !context.explicit)) return null;
+
+  const line = context.state.doc.lineAt(context.pos);
+  const beforeCursor = line.text.slice(0, context.pos - line.from);
+
+  // 检查是否在注释中
+  const inComment = /\/\*.*\*\/$/.test(beforeCursor) || /\/\/.*$/.test(beforeCursor);
+
+  if (inComment) {
+    return null; // 在注释中不提供补全
+  }
+
+  // 检查是否在字符串中
+  const inString = /["'][^"']*$/.test(beforeCursor);
+
+  if (inString) {
+    return null; // 在字符串中不提供补全
+  }
+
+  // SCSS 特有的代码片段
+  const scssSnippets = [
+    // 变量
+    snippetCompletion('$${1:variableName}: ${2:value};', { label: 'scss variable' }),
+    snippetCompletion('$${1:variableName}: ${2:value} !default;', { label: 'scss variable default' }),
+    snippetCompletion('$${1:variableName}: ${2:value} !global;', { label: 'scss variable global' }),
+    
+    // 混合器 (Mixins)
+    snippetCompletion('@mixin ${1:mixinName} {\n\t${2}\n}', { label: 'scss mixin' }),
+    snippetCompletion('@mixin ${1:mixinName}(${2:$param}) {\n\t${3}\n}', { label: 'scss mixin with param' }),
+    snippetCompletion('@mixin ${1:mixinName}(${2:$param}: ${3:defaultValue}) {\n\t${4}\n}', { label: 'scss mixin with default' }),
+    snippetCompletion('@mixin ${1:mixinName}(${2:$param}...) {\n\t${3}\n}', { label: 'scss mixin with rest' }),
+    
+    // 混合器调用
+    snippetCompletion('@include ${1:mixinName};', { label: 'include mixin' }),
+    snippetCompletion('@include ${1:mixinName}(${2:value});', { label: 'include mixin with param' }),
+    
+    // 函数
+    snippetCompletion('@function ${1:functionName}(${2:$param}) {\n\t@return ${3:value};\n}', { label: 'scss function' }),
+    snippetCompletion('@function ${1:functionName}(${2:$param}: ${3:type}) {\n\t@return ${4:value};\n}', { label: 'scss function typed' }),
+    
+    // 控制指令
+    snippetCompletion('@if ${1:condition} {\n\t${2}\n}', { label: 'scss if' }),
+    snippetCompletion('@if ${1:condition} {\n\t${2}\n} @else {\n\t${3}\n}', { label: 'scss if else' }),
+    snippetCompletion('@if ${1:condition} {\n\t${2}\n} @else if ${3:condition} {\n\t${4}\n}', { label: 'scss if else if' }),
+    snippetCompletion('@for $${1:i} from ${2:1} through ${3:10} {\n\t${4}\n}', { label: 'scss for through' }),
+    snippetCompletion('@for $${1:i} from ${2:1} to ${3:10} {\n\t${4}\n}', { label: 'scss for to' }),
+    snippetCompletion('@each $${1:item} in ${2:list} {\n\t${3}\n}', { label: 'scss each' }),
+    snippetCompletion('@each $${1:item}, $${2:index} in ${3:list} {\n\t${4}\n}', { label: 'scss each with index' }),
+    snippetCompletion('@while ${1:condition} {\n\t${2}\n}', { label: 'scss while' }),
+    
+    // 嵌套规则
+    snippetCompletion('&:${1:hover} {\n\t${2}\n}', { label: 'scss pseudo' }),
+    snippetCompletion('&.${1:className} {\n\t${2}\n}', { label: 'scss class' }),
+    snippetCompletion('&[${1:attribute}] {\n\t${2}\n}', { label: 'scss attribute' }),
+    snippetCompletion('&::${1:before} {\n\t${2}\n}', { label: 'scss pseudo element' }),
+    
+    // 占位符选择器
+    snippetCompletion('%${1:placeholderName} {\n\t${2}\n}', { label: 'scss placeholder' }),
+    snippetCompletion('@extend %${1:placeholderName};', { label: 'extend placeholder' }),
+    
+    // 扩展
+    snippetCompletion('@extend .${1:class};', { label: 'scss extend' }),
+    snippetCompletion('@extend .${1:class} !optional;', { label: 'scss extend optional' }),
+    
+    // 导入
+    snippetCompletion('@import "${1:file}";', { label: 'scss import' }),
+    snippetCompletion('@import "${1:file}" as ${2:namespace};', { label: 'scss import as' }),
+    snippetCompletion('@import "${1:file}" with (${2:config});', { label: 'scss import with' }),
+    snippetCompletion('@use "${1:file}";', { label: 'scss use' }),
+    snippetCompletion('@use "${1:file}" as ${2:namespace};', { label: 'scss use as' }),
+    snippetCompletion('@use "${1:file}" with (${2:config});', { label: 'scss use with' }),
+    snippetCompletion('@forward "${1:file}";', { label: 'scss forward' }),
+    
+    // 模块系统
+    snippetCompletion('@use "sass:math";', { label: 'use sass math' }),
+    snippetCompletion('@use "sass:color";', { label: 'use sass color' }),
+    snippetCompletion('@use "sass:string";', { label: 'use sass string' }),
+    snippetCompletion('@use "sass:list";', { label: 'use sass list' }),
+    snippetCompletion('@use "sass:map";', { label: 'use sass map' }),
+    snippetCompletion('@use "sass:selector";', { label: 'use sass selector' }),
+    snippetCompletion('@use "sass:meta";', { label: 'use sass meta' }),
+    
+    // 颜色函数
+    snippetCompletion('lighten(${1:$color}, ${2:10%})', { label: 'lighten' }),
+    snippetCompletion('darken(${1:$color}, ${2:10%})', { label: 'darken' }),
+    snippetCompletion('saturate(${1:$color}, ${2:10%})', { label: 'saturate' }),
+    snippetCompletion('desaturate(${1:$color}, ${2:10%})', { label: 'desaturate' }),
+    snippetCompletion('adjust-hue(${1:$color}, ${2:10deg})', { label: 'adjust-hue' }),
+    snippetCompletion('fade-in(${1:$color}, ${2:0.1})', { label: 'fade-in' }),
+    snippetCompletion('fade-out(${1:$color}, ${2:0.1})', { label: 'fade-out' }),
+    snippetCompletion('mix(${1:$color1}, ${2:$color2}, ${3:50%})', { label: 'mix' }),
+    snippetCompletion('complement(${1:$color})', { label: 'complement' }),
+    snippetCompletion('invert(${1:$color})', { label: 'invert' }),
+    
+    // 数学函数
+    snippetCompletion('math.div(${1:dividend}, ${2:divisor})', { label: 'math.div' }),
+    snippetCompletion('math.percentage(${1:number})', { label: 'math.percentage' }),
+    snippetCompletion('math.round(${1:number})', { label: 'math.round' }),
+    snippetCompletion('math.ceil(${1:number})', { label: 'math.ceil' }),
+    snippetCompletion('math.floor(${1:number})', { label: 'math.floor' }),
+    snippetCompletion('math.abs(${1:number})', { label: 'math.abs' }),
+    snippetCompletion('math.min(${1:number1}, ${2:number2})', { label: 'math.min' }),
+    snippetCompletion('math.max(${1:number1}, ${2:number2})', { label: 'math.max' }),
+    
+    // 字符串函数
+    snippetCompletion('string.quote(${1:string})', { label: 'string.quote' }),
+    snippetCompletion('string.unquote(${1:string})', { label: 'string.unquote' }),
+    snippetCompletion('string.index(${1:string}, ${2:substring})', { label: 'string.index' }),
+    snippetCompletion('string.insert(${1:string}, ${2:substring}, ${3:index})', { label: 'string.insert' }),
+    snippetCompletion('string.length(${1:string})', { label: 'string.length' }),
+    snippetCompletion('string.slice(${1:string}, ${2:start}, ${3:end})', { label: 'string.slice' }),
+    
+    // 列表函数
+    snippetCompletion('list.append(${1:list}, ${2:value})', { label: 'list.append' }),
+    snippetCompletion('list.index(${1:list}, ${2:value})', { label: 'list.index' }),
+    snippetCompletion('list.join(${1:list}, ${2:separator})', { label: 'list.join' }),
+    snippetCompletion('list.length(${1:list})', { label: 'list.length' }),
+    snippetCompletion('list.nth(${1:list}, ${2:n})', { label: 'list.nth' }),
+    snippetCompletion('list.set-nth(${1:list}, ${2:n}, ${3:value})', { label: 'list.set-nth' }),
+    
+    // 映射函数
+    snippetCompletion('map.get(${1:map}, ${2:key})', { label: 'map.get' }),
+    snippetCompletion('map.set(${1:map}, ${2:key}, ${3:value})', { label: 'map.set' }),
+    snippetCompletion('map.has-key(${1:map}, ${2:key})', { label: 'map.has-key' }),
+    snippetCompletion('map.keys(${1:map})', { label: 'map.keys' }),
+    snippetCompletion('map.values(${1:map})', { label: 'map.values' }),
+    snippetCompletion('map.merge(${1:map1}, ${2:map2})', { label: 'map.merge' }),
+    
+    // 选择器函数
+    snippetCompletion('selector.append(${1:selector1}, ${2:selector2})', { label: 'selector.append' }),
+    snippetCompletion('selector.extend(${1:selector}, ${2:extendee}, ${3:extender})', { label: 'selector.extend' }),
+    snippetCompletion('selector.replace(${1:selector}, ${2:original}, ${3:replacement})', { label: 'selector.replace' }),
+    snippetCompletion('selector.unify(${1:selector1}, ${2:selector2})', { label: 'selector.unify' }),
+    
+    // 元数据函数
+    snippetCompletion('meta.type-of(${1:value})', { label: 'meta.type-of' }),
+    snippetCompletion('meta.calc-args(${1:calc})', { label: 'meta.calc-args' }),
+    snippetCompletion('meta.calc-name(${1:calc})', { label: 'meta.calc-name' }),
+    snippetCompletion('meta.global-variable-exists(${1:name})', { label: 'meta.global-variable-exists' }),
+    snippetCompletion('meta.function-exists(${1:name})', { label: 'meta.function-exists' }),
+    snippetCompletion('meta.mixin-exists(${1:name})', { label: 'meta.mixin-exists' }),
+    
+    // 插值
+    snippetCompletion('#{${1:expression}}', { label: 'scss interpolation' }),
+    
+    // 父选择器引用
+    snippetCompletion('& {\n\t${1}\n}', { label: 'scss parent selector' }),
+    
+    // 注释
+    snippetCompletion('// ${1:comment}', { label: 'scss single line comment' }),
+    snippetCompletion('/* ${1:comment} */', { label: 'scss multi line comment' })
+  ];
+
+  return {
+    from: word.from,
+    options: scssSnippets,
+    validFor: /\w*/
+  };
+};
+
+// 增强的Less实时补全源
+export const enhancedLessCompletionSource: CompletionSource = (context: CompletionContext) => {
+  const word = context.matchBefore(/\w*/);
+  if (!word || (word.from == word.to && !context.explicit)) return null;
+
+  const line = context.state.doc.lineAt(context.pos);
+  const beforeCursor = line.text.slice(0, context.pos - line.from);
+  const currentWord = word.text;
+
+  // 检查是否在注释中
+  const inComment = /\/\*.*\*\/$/.test(beforeCursor) || /\/\/.*$/.test(beforeCursor);
+  if (inComment) return null;
+
+  // 检查是否在字符串中
+  const inString = /["'][^"']*$/.test(beforeCursor);
+  if (inString) return null;
+
+  // 1. 检查是否在变量定义中（如 @variable:）
+  const variableMatch = beforeCursor.match(/@([a-zA-Z-]*)\s*:\s*$/);
+  if (variableMatch) {
+    const variablePrefix = variableMatch[1];
+    const commonVariables = [
+      '@primary-color', '@secondary-color', '@text-color', '@background-color',
+      '@border-color', '@font-size', '@line-height', '@spacing', '@border-radius'
+    ];
+
+    const matchingVariables = commonVariables.filter(variable => 
+      variable.toLowerCase().startsWith(`@${variablePrefix.toLowerCase()}`)
+    );
+
+    if (matchingVariables.length > 0) {
+      return {
+        from: word.from,
+        options: matchingVariables.map(variable => ({
+          label: variable,
+          apply: variable,
+          type: 'variable'
+        }))
+      };
+    }
+  }
+
+  // 2. 检查是否在变量使用中（如 @variable）
+  const variableUseMatch = beforeCursor.match(/@([a-zA-Z-]*)$/);
+  if (variableUseMatch) {
+    const variablePrefix = variableUseMatch[1];
+    const commonVariables = [
+      '@primary-color', '@secondary-color', '@text-color', '@background-color',
+      '@border-color', '@font-size', '@line-height', '@spacing', '@border-radius'
+    ];
+
+    const matchingVariables = commonVariables.filter(variable => 
+      variable.toLowerCase().startsWith(`@${variablePrefix.toLowerCase()}`)
+    );
+
+    if (matchingVariables.length > 0) {
+      return {
+        from: word.from,
+        options: matchingVariables.map(variable => ({
+          label: variable,
+          apply: variable,
+          type: 'variable'
+        }))
+      };
+    }
+  }
+
+  // 3. 检查是否在混合器定义中（如 .mixin()）
+  const mixinMatch = beforeCursor.match(/\.([a-zA-Z-]*)\s*\(\s*$/);
+  if (mixinMatch) {
+    const mixinPrefix = mixinMatch[1];
+    const commonMixins = [
+      '.button', '.card', '.modal', '.form', '.input', '.text-center', '.flex-center'
+    ];
+
+    const matchingMixins = commonMixins.filter(mixin => 
+      mixin.toLowerCase().startsWith(`.${mixinPrefix.toLowerCase()}`)
+    );
+
+    if (matchingMixins.length > 0) {
+      return {
+        from: word.from,
+        options: matchingMixins.map(mixin => ({
+          label: mixin,
+          apply: mixin,
+          type: 'function'
+        }))
+      };
+    }
+  }
+
+  // 4. 检查是否在混合器调用中（如 .mixin()）
+  const mixinCallMatch = beforeCursor.match(/\.([a-zA-Z-]*)\s*\(\s*$/);
+  if (mixinCallMatch) {
+    const mixinPrefix = mixinCallMatch[1];
+    const commonMixins = [
+      '.button', '.card', '.modal', '.form', '.input', '.text-center', '.flex-center'
+    ];
+
+    const matchingMixins = commonMixins.filter(mixin => 
+      mixin.toLowerCase().startsWith(`.${mixinPrefix.toLowerCase()}`)
+    );
+
+    if (matchingMixins.length > 0) {
+      return {
+        from: word.from,
+        options: matchingMixins.map(mixin => ({
+          label: mixin,
+          apply: mixin,
+          type: 'function'
+        }))
+      };
+    }
+  }
+
+  // 5. 检查是否在颜色函数中（如 lighten()）
+  const colorFunctionMatch = beforeCursor.match(/([a-zA-Z-]*)\s*\(\s*$/);
+  if (colorFunctionMatch) {
+    const functionPrefix = colorFunctionMatch[1];
+    const colorFunctions = [
+      'lighten', 'darken', 'saturate', 'desaturate', 'fadein', 'fadeout',
+      'spin', 'mix', 'contrast', 'hue', 'saturation', 'lightness'
+    ];
+
+    const matchingFunctions = colorFunctions.filter(func => 
+      func.toLowerCase().startsWith(functionPrefix.toLowerCase())
+    );
+
+    if (matchingFunctions.length > 0) {
+      return {
+        from: word.from,
+        options: matchingFunctions.map(func => ({
+          label: func,
+          apply: func,
+          type: 'function'
+        }))
+      };
+    }
+  }
+
+  return null;
+};
+
+// 增强的SCSS实时补全源
+export const enhancedScssCompletionSource: CompletionSource = (context: CompletionContext) => {
+  const word = context.matchBefore(/\w*/);
+  if (!word || (word.from == word.to && !context.explicit)) return null;
+
+  const line = context.state.doc.lineAt(context.pos);
+  const beforeCursor = line.text.slice(0, context.pos - line.from);
+  const currentWord = word.text;
+
+  // 检查是否在注释中
+  const inComment = /\/\*.*\*\/$/.test(beforeCursor) || /\/\/.*$/.test(beforeCursor);
+  if (inComment) return null;
+
+  // 检查是否在字符串中
+  const inString = /["'][^"']*$/.test(beforeCursor);
+  if (inString) return null;
+
+  // 1. 检查是否在变量定义中（如 $variable:）
+  const variableMatch = beforeCursor.match(/\$([a-zA-Z-]*)\s*:\s*$/);
+  if (variableMatch) {
+    const variablePrefix = variableMatch[1];
+    const commonVariables = [
+      '$primary-color', '$secondary-color', '$text-color', '$background-color',
+      '$border-color', '$font-size', '$line-height', '$spacing', '$border-radius'
+    ];
+
+    const matchingVariables = commonVariables.filter(variable => 
+      variable.toLowerCase().startsWith(`$${variablePrefix.toLowerCase()}`)
+    );
+
+    if (matchingVariables.length > 0) {
+      return {
+        from: word.from,
+        options: matchingVariables.map(variable => ({
+          label: variable,
+          apply: variable,
+          type: 'variable'
+        }))
+      };
+    }
+  }
+
+  // 2. 检查是否在变量使用中（如 $variable）
+  const variableUseMatch = beforeCursor.match(/\$([a-zA-Z-]*)$/);
+  if (variableUseMatch) {
+    const variablePrefix = variableUseMatch[1];
+    const commonVariables = [
+      '$primary-color', '$secondary-color', '$text-color', '$background-color',
+      '$border-color', '$font-size', '$line-height', '$spacing', '$border-radius'
+    ];
+
+    const matchingVariables = commonVariables.filter(variable => 
+      variable.toLowerCase().startsWith(`$${variablePrefix.toLowerCase()}`)
+    );
+
+    if (matchingVariables.length > 0) {
+      return {
+        from: word.from,
+        options: matchingVariables.map(variable => ({
+          label: variable,
+          apply: variable,
+          type: 'variable'
+        }))
+      };
+    }
+  }
+
+  // 3. 检查是否在混合器定义中（如 @mixin）
+  const mixinMatch = beforeCursor.match(/@mixin\s+([a-zA-Z-]*)$/);
+  if (mixinMatch) {
+    const mixinPrefix = mixinMatch[1];
+    const commonMixins = [
+      'button', 'card', 'modal', 'form', 'input', 'text-center', 'flex-center'
+    ];
+
+    const matchingMixins = commonMixins.filter(mixin => 
+      mixin.toLowerCase().startsWith(mixinPrefix.toLowerCase())
+    );
+
+    if (matchingMixins.length > 0) {
+      return {
+        from: word.from,
+        options: matchingMixins.map(mixin => ({
+          label: mixin,
+          apply: mixin,
+          type: 'function'
+        }))
+      };
+    }
+  }
+
+  // 4. 检查是否在混合器调用中（如 @include）
+  const includeMatch = beforeCursor.match(/@include\s+([a-zA-Z-]*)$/);
+  if (includeMatch) {
+    const mixinPrefix = includeMatch[1];
+    const commonMixins = [
+      'button', 'card', 'modal', 'form', 'input', 'text-center', 'flex-center'
+    ];
+
+    const matchingMixins = commonMixins.filter(mixin => 
+      mixin.toLowerCase().startsWith(mixinPrefix.toLowerCase())
+    );
+
+    if (matchingMixins.length > 0) {
+      return {
+        from: word.from,
+        options: matchingMixins.map(mixin => ({
+          label: mixin,
+          apply: mixin,
+          type: 'function'
+        }))
+      };
+    }
+  }
+
+  // 5. 检查是否在函数定义中（如 @function）
+  const functionMatch = beforeCursor.match(/@function\s+([a-zA-Z-]*)$/);
+  if (functionMatch) {
+    const functionPrefix = functionMatch[1];
+    const commonFunctions = [
+      'calculate', 'convert', 'format', 'validate', 'process'
+    ];
+
+    const matchingFunctions = commonFunctions.filter(func => 
+      func.toLowerCase().startsWith(functionPrefix.toLowerCase())
+    );
+
+    if (matchingFunctions.length > 0) {
+      return {
+        from: word.from,
+        options: matchingFunctions.map(func => ({
+          label: func,
+          apply: func,
+          type: 'function'
+        }))
+      };
+    }
+  }
+
+  // 6. 检查是否在控制指令中（如 @if, @for, @each）
+  const directiveMatch = beforeCursor.match(/@([a-zA-Z-]*)$/);
+  if (directiveMatch) {
+    const directivePrefix = directiveMatch[1];
+    const directives = [
+      'if', 'else', 'for', 'each', 'while', 'mixin', 'include', 'function',
+      'extend', 'import', 'use', 'forward', 'return'
+    ];
+
+    const matchingDirectives = directives.filter(directive => 
+      directive.toLowerCase().startsWith(directivePrefix.toLowerCase())
+    );
+
+    if (matchingDirectives.length > 0) {
+      return {
+        from: word.from,
+        options: matchingDirectives.map(directive => ({
+          label: `@${directive}`,
+          apply: directive,
+          type: 'keyword'
+        }))
+      };
+    }
+  }
+
+  return null;
+};
+
+// Less 自动补全
+export const lessAutocomplete = autocompletion({
+  override: [enhancedLessCompletionSource, lessSnippetCompletionSource, cssCompletionSource],
+  defaultKeymap: true,
+  maxRenderedOptions: 50
+});
+
+// SCSS 自动补全
+export const scssAutocomplete = autocompletion({
+  override: [enhancedScssCompletionSource, scssSnippetCompletionSource, cssCompletionSource],
   defaultKeymap: true,
   maxRenderedOptions: 50
 }); 

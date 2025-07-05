@@ -1,8 +1,8 @@
-# CSS 和 JavaScript 自动补全功能指南
+# CSS、Less、SCSS 和 JavaScript 自动补全功能指南
 
 ## 功能概述
 
-本项目为CSS和JavaScript编辑器添加了**CodeMirror原生补全功能没有的**智能语法补全功能，与原生功能完美结合：
+本项目为CSS、Less、SCSS和JavaScript编辑器添加了**CodeMirror原生补全功能没有的**智能语法补全功能，与原生功能完美结合：
 
 ### CodeMirror原生CSS补全功能包含：
 - **CSS属性补全**：动态获取浏览器支持的CSS属性
@@ -28,6 +28,40 @@
 - **回车键补全**：支持回车键选择补全项
 
 ### 本项目新增的语法补全功能：
+
+## Less 和 SCSS 代码补全
+
+**设计原则**：提供CodeMirror原生没有的Less和SCSS智能语法补全功能，与CSS原生补全完美结合。
+
+### Less 特有功能
+- **变量系统**：@变量定义、引用、插值
+- **混合器**：.mixin()定义、调用、参数传递
+- **嵌套规则**：&父选择器引用、伪类、类、属性选择器
+- **颜色函数**：lighten、darken、saturate、desaturate、fadein、fadeout、spin、mix、contrast
+- **数学运算**：+、-、*、/ 运算符
+- **条件语句**：when、when not、when and、when or
+- **循环**：递归循环模式
+- **导入**：@import各种导入方式
+- **命名空间**：#namespace()定义和调用
+- **扩展**：&:extend()继承选择器
+
+### SCSS 特有功能
+- **变量系统**：$变量定义、引用、插值
+- **混合器**：@mixin定义、@include调用、参数传递
+- **函数**：@function定义、@return返回值
+- **控制指令**：@if、@else、@for、@each、@while
+- **嵌套规则**：&父选择器引用、伪类、类、属性选择器
+- **占位符选择器**：%placeholder定义、@extend继承
+- **扩展**：@extend继承选择器
+- **导入系统**：@import、@use、@forward
+- **模块系统**：sass:math、sass:color、sass:string、sass:list、sass:map、sass:selector、sass:meta
+- **颜色函数**：lighten、darken、saturate、desaturate、adjust-hue、fade-in、fade-out、mix、complement、invert
+- **数学函数**：math.div、math.percentage、math.round、math.ceil、math.floor、math.abs、math.min、math.max
+- **字符串函数**：string.quote、string.unquote、string.index、string.insert、string.length、string.slice
+- **列表函数**：list.append、list.index、list.join、list.length、list.nth、list.set-nth
+- **映射函数**：map.get、map.set、map.has-key、map.keys、map.values、map.merge
+- **选择器函数**：selector.append、selector.extend、selector.replace、selector.unify
+- **元数据函数**：meta.type-of、meta.calc-args、meta.calc-name、meta.global-variable-exists、meta.function-exists、meta.mixin-exists
 
 ## HTML 标签和属性补全
 
@@ -218,6 +252,22 @@ aria-label="value"
 - @规则补全
 - 单位补全
 - 回车键补全支持
+
+## Less 和 SCSS 语法补全
+
+**设计原则**：Less和SCSS补全 = **CodeMirror原生CSS补全** + **Less/SCSS特有语法补全**
+
+### Less 语法补全
+- **原生CSS补全**：所有CSS属性、值、颜色、伪类、@规则、单位
+- **Less特有补全**：变量、混合器、嵌套、颜色函数、数学运算、条件语句、循环、导入、命名空间、扩展
+- **智能上下文**：根据代码上下文提供相关补全
+- **回车键支持**：所有补全功能都支持回车键选择
+
+### SCSS 语法补全
+- **原生CSS补全**：所有CSS属性、值、颜色、伪类、@规则、单位
+- **SCSS特有补全**：变量、混合器、函数、控制指令、嵌套、占位符、扩展、导入、模块系统、各种函数库
+- **智能上下文**：根据代码上下文提供相关补全
+- **回车键支持**：所有补全功能都支持回车键选择
 
 ## JavaScript 代码片段补全
 
@@ -510,6 +560,34 @@ debugger;
 5. **规则上下文**：在CSS规则后提供右大括号补全
 6. **回车键补全**：支持回车键选择补全项
 
+### Less 上下文感知补全
+**CodeMirror原生 + 自定义提供**，包括：
+
+1. **CSS原生上下文**：所有CSS上下文感知功能
+2. **变量上下文**：在@变量后提供值补全
+3. **混合器上下文**：在.mixin()后提供参数补全
+4. **嵌套上下文**：在&后提供选择器补全
+5. **函数上下文**：在颜色函数后提供参数补全
+6. **条件上下文**：在when后提供条件补全
+7. **导入上下文**：在@import后提供文件路径补全
+8. **回车键补全**：支持回车键选择补全项
+
+### SCSS 上下文感知补全
+**CodeMirror原生 + 自定义提供**，包括：
+
+1. **CSS原生上下文**：所有CSS上下文感知功能
+2. **变量上下文**：在$变量后提供值补全
+3. **混合器上下文**：在@mixin后提供参数补全
+4. **函数上下文**：在@function后提供参数和返回值补全
+5. **控制指令上下文**：在@if、@for、@each后提供条件补全
+6. **嵌套上下文**：在&后提供选择器补全
+7. **占位符上下文**：在%后提供占位符名称补全
+8. **扩展上下文**：在@extend后提供选择器补全
+9. **导入上下文**：在@import、@use后提供文件路径补全
+10. **模块上下文**：在sass:后提供模块名称补全
+11. **函数库上下文**：在math.、color.、string.等后提供函数补全
+12. **回车键补全**：支持回车键选择补全项
+
 ### JavaScript 上下文感知补全
 **CodeMirror原生提供**，包括：
 
@@ -556,11 +634,15 @@ img → <img  />
 ### 原生功能
 - **HTML**：通过 `@codemirror/lang-html` 包的 `htmlCompletionSource` 提供
 - **CSS**：通过 `@codemirror/lang-css` 包的 `cssCompletionSource` 提供
+- **Less**：通过 `@codemirror/lang-less` 包提供语法高亮和基础补全
+- **SCSS**：通过 `@codemirror/lang-css` 包提供语法高亮，配合自定义SCSS补全
 - **JavaScript**：通过 `@codemirror/lang-javascript` 包提供完整的补全功能
 
 ### 自定义功能
 - **HTML**：通过 `customHtmlCompletionSource` 提供智能标签和属性补全
 - **HTML代码片段**：通过 `htmlSnippetCompletionSource` 提供代码片段补全
+- **Less代码片段**：通过 `lessSnippetCompletionSource` 提供Less特有语法补全
+- **SCSS代码片段**：通过 `scssSnippetCompletionSource` 提供SCSS特有语法补全
 - **JavaScript**：通过 `jsSnippetCompletionSource` 提供代码片段补全
 - 使用正则表达式匹配不同的语法模式
 - 与原生补全功能结合使用，不重复实现
@@ -575,6 +657,16 @@ export const htmlAutocomplete = autocompletion({
 // CSS 自动补全
 export const cssAutocomplete = autocompletion({
   override: [cssCompletionSource]
+});
+
+// Less 自动补全
+export const lessAutocomplete = autocompletion({
+  override: [lessSnippetCompletionSource, cssCompletionSource]
+});
+
+// SCSS 自动补全
+export const scssAutocomplete = autocompletion({
+  override: [scssSnippetCompletionSource, cssCompletionSource]
 });
 
 // JavaScript 自动补全
@@ -598,10 +690,13 @@ export const jsAutocomplete = autocompletion({
 
 ## 总结
 
-本项目的自动补全功能 = **CodeMirror原生补全** + **自定义智能标签补全** + **自定义代码片段补全**
+本项目的自动补全功能 = **CodeMirror原生补全** + **自定义智能标签补全** + **自定义代码片段补全** + **Less/SCSS特有语法补全**
 
 - **CodeMirror原生**：提供完整的HTML、CSS、JavaScript关键字、对象、方法、属性补全
 - **自定义智能标签补全**：支持输入部分标签名，按回车补全完整标签
 - **自定义代码片段**：提供实用的代码片段，提高开发效率
+- **Less特有补全**：提供变量、混合器、嵌套、函数、条件语句、循环等Less特性
+- **SCSS特有补全**：提供变量、混合器、函数、控制指令、模块系统等SCSS特性
 - **完美结合**：提供最完整的代码编辑体验
+- **实时切换**：支持在CSS、Less、SCSS之间无缝切换
 - **回车键支持**：所有补全功能都支持回车键选择 

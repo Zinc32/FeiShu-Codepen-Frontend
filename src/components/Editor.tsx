@@ -5,6 +5,7 @@ import { EditorState, Extension } from '@codemirror/state';
 import { javascript } from '@codemirror/lang-javascript';
 import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
+import { less } from '@codemirror/lang-less';
 import { vue } from '@codemirror/lang-vue';
 
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -43,13 +44,22 @@ import {
 import {
     htmlAutocomplete,
     cssAutocomplete,
-    jsAutocomplete,
+    lessAutocomplete,
+    scssAutocomplete,
+    // jsAutocomplete,
+    jsAutocompleteWithAST,//改了这里
     reactAutocomplete,
     vueAutocomplete,
     tsAutocomplete,
     bracketMatchingExtension,
-    closeBracketsExtension
+    closeBracketsExtension,
+    jsSnippetCompletionSource,
+    reactSnippetCompletionSource,
+    vueSnippetCompletionSource,
+    tsSnippetCompletionSource
 } from '../services/autocompleteService';
+import { enhancedASTCompletionSource, simpleASTCompletionSource, testCompletionSource, smartCompletionSource, enhancedSmartCompletionSource } from '../services/astCompletionService';
+import { autocompletion } from '@codemirror/autocomplete';
 import { runtimeErrorExtension, addRuntimeErrorsToEditor, clearRuntimeErrorsFromEditor } from '../services/lintService';
 
 // 创建编辑器的辅助函数
@@ -480,8 +490,29 @@ const Editor: React.FC = () => {
         setIsUpdatingFromState(true);
 
         // 创建新编辑器
-        const newHtmlEditor = createEditor(htmlElement, html(), setHtmlEditor, setHtmlCode, htmlCode, true, htmlAutocomplete);
-        const newCssEditor = createEditor(cssElement, css(), setCssEditor, setCssCode, cssCode, true, cssAutocomplete);
+        const newHtmlEditor = createEditor(htmlElement,html(), setHtmlEditor, setHtmlCode, htmlCode, true, htmlAutocomplete);
+        
+        // 根据CSS语言选择对应的扩展和自动补全
+        let cssExtension: Extension;
+        let cssAutocompleteExt: Extension;
+
+        switch (cssLanguage) {
+            case 'less':
+                cssExtension = less();
+                cssAutocompleteExt = lessAutocomplete;
+                break;
+            case 'scss':
+                cssExtension = css(); // SCSS使用CSS语言包，但添加SCSS特有的自动补全
+                cssAutocompleteExt = scssAutocomplete;
+                break;
+            case 'css':
+            default:
+                cssExtension = css();
+                cssAutocompleteExt = cssAutocomplete;
+                break;
+        }
+
+        const newCssEditor = createEditor(cssElement, cssExtension, setCssEditor, setCssCode, cssCode, true, cssAutocompleteExt);
 
         // 根据JavaScript语言选择对应的扩展和自动补全
         let jsExtension: Extension;
@@ -490,23 +521,31 @@ const Editor: React.FC = () => {
         switch (jsLanguage) {
             case 'react':
                 jsExtension = javascript({ typescript: true });
-                jsAutocompleteExt = reactAutocomplete;
+                jsAutocompleteExt = autocompletion({
+                    override: [smartCompletionSource, reactSnippetCompletionSource]
+                });
                 break;
             case 'vue':
                 jsExtension = vue();
-                jsAutocompleteExt = vueAutocomplete;
+                jsAutocompleteExt = autocompletion({
+                    override: [smartCompletionSource, vueSnippetCompletionSource]
+                });
                 break;
             case 'ts':
                 jsExtension = javascript({ typescript: true });
-                jsAutocompleteExt = tsAutocomplete;
+                jsAutocompleteExt = autocompletion({
+                    override: [smartCompletionSource, tsSnippetCompletionSource]
+                });
                 break;
             case 'js':
             default:
                 jsExtension = javascript();
-                jsAutocompleteExt = jsAutocomplete;
+                jsAutocompleteExt = autocompletion({
+                    override: [enhancedSmartCompletionSource, smartCompletionSource, jsSnippetCompletionSource]
+                });
                 break;
         }
-
+        
         const newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, true, jsAutocompleteExt, runtimeErrorExtension);
 
         // 重置重新初始化标志
@@ -522,7 +561,7 @@ const Editor: React.FC = () => {
             newCssEditor?.destroy();
             newJsEditor?.destroy();
         };
-    }, [shouldReinitializeEditors, jsLanguage, isPenLoaded]); // 移除代码内容依赖，避免无限循环
+    }, [shouldReinitializeEditors, jsLanguage, cssLanguage, isPenLoaded]); // 移除代码内容依赖，避免无限循环
 
     // 当React state变化时，同步更新编辑器内容（不重建编辑器）
     useEffect(() => {
