@@ -8,7 +8,7 @@ import { css } from '@codemirror/lang-css';
 import { less } from '@codemirror/lang-less';
 import { vue } from '@codemirror/lang-vue';
 
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { createPen, updatePen, getUserPens, getPen, deletePen, Pen, PenData } from '../services/penService';
 import Preview from './Preview';
@@ -56,7 +56,9 @@ import {
     jsSnippetCompletionSource,
     reactSnippetCompletionSource,
     vueSnippetCompletionSource,
-    tsSnippetCompletionSource
+    tsSnippetCompletionSource,
+    completionKeymap,
+    closeBracketsKeymap//冲突
 } from '../services/autocompleteService';
 import { enhancedASTCompletionSource, simpleASTCompletionSource, testCompletionSource, smartCompletionSource, enhancedSmartCompletionSource } from '../services/astCompletionService';
 import { autocompletion } from '@codemirror/autocomplete';
@@ -87,6 +89,9 @@ const createEditor = (
         crosshairCursor(),
         highlightActiveLine(),
         keymap.of([
+            indentWithTab,
+            ...completionKeymap,
+            ...closeBracketsKeymap,
             ...defaultKeymap,
             ...historyKeymap
         ]),
@@ -337,10 +342,65 @@ const Editor: React.FC = () => {
         }).map(p => p.css),
         compiledCss
     ].join('\n\n');
-    const mergedJs = [
-        ...userPens.filter(p => importedJsPenIds.includes(p.id)).sort((a, b) => {
+    // 编译导入的 JS 代码，确保所有代码都经过编译
+    const compiledImportedJs = userPens
+        .filter(p => importedJsPenIds.includes(p.id))
+        .sort((a, b) => {
             return importedJsPenIds.indexOf(a.id) - importedJsPenIds.indexOf(b.id);
-        }).map(p => p.js),
+        })
+        .map(p => {
+            // 根据导入的 Pen 的语言设置来编译
+            const penJsLanguage = p.jsLanguage || 'js';
+
+            // 如果是 React 代码，需要编译 JSX
+            if (penJsLanguage === 'react') {
+                try {
+                    // 使用 Babel 编译 JSX
+                    const Babel = (window as any).Babel;
+                    if (Babel) {
+                        const result = Babel.transform(p.js, {
+                            presets: [
+                                ["env", { targets: "defaults" }],
+                                ["react", { runtime: "classic" }]
+                            ],
+                            plugins: [],
+                        });
+                        return result.code || p.js;
+                    }
+                } catch (error) {
+                    console.warn('Failed to compile imported React code:', error);
+                }
+            }
+
+            // 如果是 TypeScript 代码，需要编译
+            if (penJsLanguage === 'ts') {
+                try {
+                    const ts = (window as any).ts;
+                    if (ts) {
+                        const result = ts.transpileModule(p.js, {
+                            compilerOptions: {
+                                module: ts.ModuleKind.ESNext,
+                                target: ts.ScriptTarget.ES2020,
+                                jsx: ts.JsxEmit.Preserve,
+                                strict: false,
+                                esModuleInterop: true,
+                                allowSyntheticDefaultImports: true,
+                                skipLibCheck: true
+                            }
+                        });
+                        return result.outputText || p.js;
+                    }
+                } catch (error) {
+                    console.warn('Failed to compile imported TypeScript code:', error);
+                }
+            }
+
+            // 其他语言直接返回原始代码
+            return p.js;
+        });
+
+    const mergedJs = [
+        ...compiledImportedJs,
         compiledJs
     ].join('\n\n');
 
@@ -356,15 +416,47 @@ const Editor: React.FC = () => {
     const initializeNewPen = useCallback(() => {
         setTitle('Untitled');
         setCurrentPen(null);
-        const defaultHtml = '<div id="app">Hello World</div>';
-        const defaultCss = 'body { color: blue; }';
-        const defaultJs = jsLanguage === 'react'
-            ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
-            : jsLanguage === 'vue'
-                ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
-                : jsLanguage === 'ts'
-                    ? 'console.log("Hello TypeScript!");'
-                    : 'console.log("Hello World");';
+
+        // 根据当前语言设置获取默认HTML
+        const getDefaultHtml = (currentLanguage: string) => {
+            switch (currentLanguage) {
+                case 'react':
+                case 'vue':
+                    return '<div id="app"></div>';
+                default:
+                    return '<div id="app">Hello World</div>';
+            }
+        };
+
+        // 根据当前语言设置获取默认CSS
+        const getDefaultCss = (currentLanguage: string) => {
+            switch (currentLanguage) {
+                case 'react':
+                    return 'body {\n  font-family: -apple-system, BlinkMacSystemFont, sans-serif;\n  margin: 0;\n  padding: 20px;\n}';
+                case 'vue':
+                    return 'body {\n  font-family: -apple-system, BlinkMacSystemFont, sans-serif;\n  margin: 0;\n  padding: 20px;\n}';
+                default:
+                    return 'body { color: blue; }';
+            }
+        };
+
+        // 根据当前语言设置获取默认代码
+        const getDefaultJs = (currentLanguage: string) => {
+            switch (currentLanguage) {
+                case 'react':
+                    return 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nwindow.reactRoot = root;\nroot.render(<App />);';
+                case 'vue':
+                    return 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\nconst app = createApp(component);\nwindow.vueApp = app;\napp.mount("#app");';
+                case 'ts':
+                    return 'console.log("Hello TypeScript!");';
+                default:
+                    return 'console.log("Hello World");';
+            }
+        };
+
+        const defaultHtml = getDefaultHtml(jsLanguage);
+        const defaultCss = getDefaultCss(jsLanguage);
+        const defaultJs = getDefaultJs(jsLanguage);
 
         setHtmlCode(defaultHtml);
         setCssCode(defaultCss);
@@ -372,19 +464,19 @@ const Editor: React.FC = () => {
 
         // 同时初始化编译后的代码
         setCompiledCss(defaultCss); // CSS默认直接使用
-        setCompiledJs(defaultJs);   // JS默认直接使用
+        setCompiledJs(defaultJs);   // JS默认直接使用，因为默认代码不需要编译
 
         setIsPenLoaded(true); // 标记Pen已初始化
-    }, []);//这里不能将jsLanguage添加为依赖项，否则每次切换语言时都会触发页面的重新渲染导致切换失败
+    }, [jsLanguage]); // 现在可以安全地添加jsLanguage作为依赖项，因为我们优化了语言切换逻辑
 
     // 当语言改变时，如果是新建状态，更新默认代码
     useEffect(() => {
         if (!currentPen) {
             // 只有在新建状态下才更新默认代码
             const defaultJs = jsLanguage === 'react'
-                ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
+                ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nwindow.reactRoot = root;\nroot.render(<App />);'
                 : jsLanguage === 'vue'
-                    ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
+                    ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\nconst app = createApp(component);\nwindow.vueApp = app;\napp.mount("#app");'
                     : jsLanguage === 'ts'
                         ? 'console.log("Hello TypeScript!");'
                         : 'console.log("Hello World");';
@@ -868,23 +960,74 @@ const Editor: React.FC = () => {
 
         // 如果是新建状态且当前代码是默认代码，则更新默认代码
         if (!currentPen) {
+            const currentHtml = htmlEditor?.state.doc.toString() || htmlCode;
+            const currentCss = cssEditor?.state.doc.toString() || cssCode;
             const currentJs = jsEditor?.state.doc.toString() || jsCode;
+
+            // 检查是否是默认代码
+            const isDefaultHtml = currentHtml === '<div id="app">Hello World</div>' ||
+                currentHtml === '<div id="app"></div>';
+            const isDefaultCss = currentCss === 'body { color: blue; }' ||
+                currentCss === 'body {\n  font-family: -apple-system, BlinkMacSystemFont, sans-serif;\n  margin: 0;\n  padding: 20px;\n}';
             const isDefaultJs = currentJs === 'console.log("Hello World");' ||
-                currentJs === 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));' ||
-                currentJs === 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");' ||
+                currentJs === 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nwindow.reactRoot = root;\nroot.render(<App />);' ||
+                currentJs === 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\nconst app = createApp(component);\nwindow.vueApp = app;\napp.mount("#app");' ||
                 currentJs === 'console.log("Hello TypeScript!");';
 
-            if (isDefaultJs) {
-                const defaultJs = newLanguage === 'react'
-                    ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nReactDOM.render(<App />, document.getElementById("app"));'
-                    : newLanguage === 'vue'
-                        ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\ncreateApp(component).mount("#app");'
-                        : newLanguage === 'ts'
-                            ? 'console.log("Hello TypeScript!");'
-                            : 'console.log("Hello World");';
+            if (isDefaultJs || isDefaultHtml || isDefaultCss) {
+                // 获取新语言对应的默认代码
+                const getNewDefaultHtml = () => {
+                    switch (newLanguage) {
+                        case 'react':
+                        case 'vue':
+                            return '<div id="app"></div>';
+                        default:
+                            return '<div id="app">Hello World</div>';
+                    }
+                };
 
-                setJsCode(defaultJs);
+                const getNewDefaultCss = () => {
+                    switch (newLanguage) {
+                        case 'react':
+                        case 'vue':
+                            return 'body {\n  font-family: -apple-system, BlinkMacSystemFont, sans-serif;\n  margin: 0;\n  padding: 20px;\n}';
+                        default:
+                            return 'body { color: blue; }';
+                    }
+                };
+
+                const getNewDefaultJs = () => {
+                    switch (newLanguage) {
+                        case 'react':
+                            return 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nwindow.reactRoot = root;\nroot.render(<App />);';
+                        case 'vue':
+                            return 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\nconst app = createApp(component);\nwindow.vueApp = app;\napp.mount("#app");';
+                        case 'ts':
+                            return 'console.log("Hello TypeScript!");';
+                        default:
+                            return 'console.log("Hello World");';
+                    }
+                };
+
+                const newDefaultHtml = getNewDefaultHtml();
+                const newDefaultCss = getNewDefaultCss();
+                const newDefaultJs = getNewDefaultJs();
+
+                // 只更新是默认内容的部分
+                if (isDefaultHtml) setHtmlCode(newDefaultHtml);
+                if (isDefaultCss) {
+                    setCssCode(newDefaultCss);
+                    setCompiledCss(newDefaultCss);
+                }
+                if (isDefaultJs) {
+                    setJsCode(newDefaultJs);
+                    setCompiledJs(newDefaultJs);
+                }
             }
+        } else {
+            // 如果是编辑现有Pen，立即重新编译当前代码以匹配新语言
+            const currentJs = jsEditor?.state.doc.toString() || jsCode;
+            compileJs(currentJs, newLanguage).then(setCompiledJs);
         }
 
         // 标记需要重新初始化编辑器

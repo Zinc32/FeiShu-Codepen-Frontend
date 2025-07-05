@@ -287,10 +287,22 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
         libraryScripts = `
           <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
           <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+          <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
         `;
       } else if (jsLanguage === 'vue') {
         libraryScripts = `
           <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+        `;
+      } else if (jsLanguage === 'ts') {
+        libraryScripts = `
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/typescript/5.3.3/typescript.min.js"></script>
+        `;
+      }
+
+      // 为所有语言都加载 Babel，用于编译导入的代码
+      if (jsLanguage !== 'react') {
+        libraryScripts += `
+          <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
         `;
       }
 
@@ -412,7 +424,70 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
                   var executionSuccessful = false;
                   
                   try {
-                    eval(newCode);
+                    // 清理之前的 React 根节点（如果存在）
+                    if (window.reactRoot) {
+                      try {
+                        window.reactRoot.unmount();
+                      } catch (e) {
+                        // 忽略卸载错误
+                      }
+                      window.reactRoot = null;
+                    }
+                    
+                    // 清理之前的 Vue 应用（如果存在）
+                    if (window.vueApp) {
+                      try {
+                        window.vueApp.unmount();
+                      } catch (e) {
+                        // 忽略卸载错误
+                      }
+                      window.vueApp = null;
+                    }
+                    
+                    // 编译代码（如果需要）
+                    let codeToExecute = newCode;
+                    
+                    // 如果是 React 代码，需要编译 JSX
+                    if ('${jsLanguage}' === 'react') {
+                      try {
+                        if (window.Babel) {
+                          const result = window.Babel.transform(codeToExecute, {
+                            presets: [
+                              ["env", { targets: "defaults" }],
+                              ["react", { runtime: "classic" }]
+                            ],
+                            plugins: [],
+                          });
+                          codeToExecute = result.code || codeToExecute;
+                        }
+                      } catch (compileError) {
+                        console.warn('Failed to compile React code:', compileError);
+                      }
+                    }
+                    
+                    // 如果是 TypeScript 代码，需要编译
+                    if ('${jsLanguage}' === 'ts') {
+                      try {
+                        if (window.ts) {
+                          const result = window.ts.transpileModule(codeToExecute, {
+                            compilerOptions: {
+                              module: window.ts.ModuleKind.ESNext,
+                              target: window.ts.ScriptTarget.ES2020,
+                              jsx: window.ts.JsxEmit.Preserve,
+                              strict: false,
+                              esModuleInterop: true,
+                              allowSyntheticDefaultImports: true,
+                              skipLibCheck: true
+                            }
+                          });
+                          codeToExecute = result.outputText || codeToExecute;
+                        }
+                      } catch (compileError) {
+                        console.warn('Failed to compile TypeScript code:', compileError);
+                      }
+                    }
+                    
+                    eval(codeToExecute);
                     executionSuccessful = true;
                     
                     // 延迟检查是否需要清除错误，避免时序竞争
@@ -498,11 +573,75 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
                   event.preventDefault();
                 });
                 
-                // 初始代码执行 - 纯运行时执行
+                // 初始代码执行 - 编译并执行
                 runtimeErrors = []; // 重置错误数组
                 
                 try {
-                  ${cleanJs}
+                  // 清理之前的 React 根节点（如果存在）
+                  if (window.reactRoot) {
+                    try {
+                      window.reactRoot.unmount();
+                    } catch (e) {
+                      // 忽略卸载错误
+                    }
+                    window.reactRoot = null;
+                  }
+                  
+                  // 清理之前的 Vue 应用（如果存在）
+                  if (window.vueApp) {
+                    try {
+                      window.vueApp.unmount();
+                    } catch (e) {
+                      // 忽略卸载错误
+                    }
+                    window.vueApp = null;
+                  }
+                  
+                  // 编译代码（如果需要）
+                  let codeToExecute = \`${cleanJs}\`;
+                  
+                  // 如果是 React 代码，需要编译 JSX
+                  if ('${jsLanguage}' === 'react') {
+                    try {
+                      if (window.Babel) {
+                        const result = window.Babel.transform(codeToExecute, {
+                          presets: [
+                            ["env", { targets: "defaults" }],
+                            ["react", { runtime: "classic" }]
+                          ],
+                          plugins: [],
+                        });
+                        codeToExecute = result.code || codeToExecute;
+                      }
+                    } catch (compileError) {
+                      console.warn('Failed to compile React code:', compileError);
+                    }
+                  }
+                  
+                  // 如果是 TypeScript 代码，需要编译
+                  if ('${jsLanguage}' === 'ts') {
+                    try {
+                      if (window.ts) {
+                        const result = window.ts.transpileModule(codeToExecute, {
+                          compilerOptions: {
+                            module: window.ts.ModuleKind.ESNext,
+                            target: window.ts.ScriptTarget.ES2020,
+                            jsx: window.ts.JsxEmit.Preserve,
+                            strict: false,
+                            esModuleInterop: true,
+                            allowSyntheticDefaultImports: true,
+                            skipLibCheck: true
+                          }
+                        });
+                        codeToExecute = result.outputText || codeToExecute;
+                      }
+                    } catch (compileError) {
+                      console.warn('Failed to compile TypeScript code:', compileError);
+                    }
+                  }
+                  
+                  // 执行编译后的代码
+                  eval(codeToExecute);
                   
                 } catch (error) {
                   // 手动触发错误处理，因为 try-catch 可能阻止 window.onerror

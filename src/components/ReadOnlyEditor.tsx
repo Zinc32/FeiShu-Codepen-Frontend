@@ -4,7 +4,7 @@ import { EditorState, Extension } from '@codemirror/state';
 import { javascript } from '@codemirror/lang-javascript';
 import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import {
     EditorContainer,
@@ -68,6 +68,7 @@ const ReadOnlyEditor: React.FC<ReadOnlyEditorProps> = ({
             crosshairCursor(),
             highlightActiveLine(),
             keymap.of([
+                indentWithTab,
                 ...defaultKeymap,
                 ...historyKeymap
             ]),
