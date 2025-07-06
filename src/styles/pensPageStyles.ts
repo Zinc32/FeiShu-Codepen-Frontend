@@ -10,6 +10,9 @@ export const Container = styled.div`
   padding: 20px;
   max-width: 1200px;
   margin: 0 auto;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 `;
 
 export const Header = styled.div`
@@ -17,6 +20,7 @@ export const Header = styled.div`
   justify-content: space-between;
   align-items: center;
   margin-bottom: 30px;
+  flex-shrink: 0; /* 防止头部被压缩 */
 `;
 
 export const Title = styled.h1`
@@ -46,6 +50,28 @@ export const PenGrid = styled.div`
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 24px;
   margin-top: 20px;
+  flex: 1; /* 填充剩余空间 */
+  overflow-y: auto; /* 添加竖直滚动条 */
+  padding-right: 8px; /* 为滚动条留出空间 */
+  
+  /* 自定义滚动条样式 */
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
 `;
 
 export const PenCard = styled(Link)`

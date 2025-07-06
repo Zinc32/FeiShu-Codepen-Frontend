@@ -6,6 +6,7 @@ import Editor from './components/Editor';
 import PensPage from './pages/PensPage';
 import PreviewPage from './pages/PreviewPage';
 import { useAuth, AuthProvider } from './contexts/AuthContext';
+import { LanguageProvider } from './contexts/LanguageContext';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
@@ -51,7 +52,9 @@ const App: React.FC = () => {
   return (
     <Router>
       <AuthProvider>
-        <AppRoutes />
+        <LanguageProvider>
+          <AppRoutes />
+        </LanguageProvider>
       </AuthProvider>
     </Router>
   );

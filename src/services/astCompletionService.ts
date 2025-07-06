@@ -2,242 +2,22 @@
 import { CompletionContext, CompletionSource } from '@codemirror/autocomplete';
 import { ASTAnalysisService, CompletionItem, ContextInfo } from './astAnalysisService';
 
-// AST补全源
-export const astCompletionSource: CompletionSource = async (context: CompletionContext) => {
-  // 调试信息
-  const isDebugEnabled = localStorage.getItem('debugAST') === 'true';
-  
-  const astService = new ASTAnalysisService();
-  const code = context.state.doc.toString();
-  const position = getPositionFromContext(context);
-  const language = getCurrentLanguage(context);
-  
-  if (isDebugEnabled) {
-    console.log('AST Completion Debug:', {
-      language,
-      position,
-      codeLength: code.length,
-      cursorPos: context.pos
-    });
-  }
-  
-  try {
-    // 解析代码生成AST
-    const ast = astService.parseCode(code, language);
-    
-    if (!ast) {
-      if (isDebugEnabled) {
-        console.log('AST parsing failed - no AST generated');
-      }
-      return null; // 如果解析失败，返回null
-    }
-    
-    if (isDebugEnabled) {
-      console.log('AST parsed successfully:', ast.type);
-    }
-    
-    // 分析上下文
-    const contextInfo = astService.analyzeContext(ast, position, language, code);//这里的code是后来改的，因为添加了检查节点是否在vue模板中
-    
-    if (isDebugEnabled) {
-      console.log('Context analyzed:', {
-        objectType: contextInfo.objectType,
-        accessPath: contextInfo.accessPath,
-        scopeVariables: contextInfo.scope.variables.size
-      });
-    }
-    
-    // 生成补全建议
-    const completions = astService.generateCompletions(contextInfo);
-    
-    if (isDebugEnabled) {
-      console.log('Generated completions:', completions.length);
-    }
-    
-    // 过滤基于用户输入的补全
-    const filteredCompletions = filterCompletions(completions, context);
-    
-    if (filteredCompletions.length === 0) {
-      if (isDebugEnabled) {
-        console.log('No filtered completions found');
-      }
-      return null;
-    }
-    
-    if (isDebugEnabled) {
-      console.log('Filtered completions:', filteredCompletions.map(c => c.label));
-    }
-    
-    return {
-      from: context.pos,
-      options: filteredCompletions.map(comp => ({
-        label: comp.label,
-        apply: comp.insertText,
-        type: comp.kind,
-        detail: comp.detail,
-        documentation: comp.documentation,
-        boost: getCompletionBoost(comp, contextInfo)
-      }))
-    };
-  } catch (error) {
-    console.warn('AST completion failed:', error);
-    return null; // 出错时返回null，不影响其他补全源
-  }
+// 全局变量来存储当前的jsLanguage
+let currentJsLanguage: 'js' | 'react' | 'vue' | 'ts' = 'js';
+
+// 设置当前jsLanguage的函数
+export const setCurrentJsLanguage = (language: 'js' | 'react' | 'vue' | 'ts') => {
+  currentJsLanguage = language;
 };
 
-// 简化的AST补全源 - 用于测试
-export const simpleASTCompletionSource: CompletionSource = (context: CompletionContext) => {
-  const isDebugEnabled = localStorage.getItem('debugAST') === 'true';
-  
-  if (isDebugEnabled) {
-    console.log('Simple AST Completion triggered');
-  }
-  
-  // 简单的测试补全 - 总是返回一些基础补全
-  const testCompletions = [
-    {
-      label: 'testVariable',
-      insertText: 'testVariable',
-      kind: 'variable' as const,
-      detail: 'Test variable',
-      documentation: 'This is a test variable'
-    },
-    {
-      label: 'testFunction',
-      insertText: 'testFunction()',
-      kind: 'function' as const,
-      detail: 'Test function',
-      documentation: 'This is a test function'
-    },
-    {
-      label: 'testMethod',
-      insertText: 'testMethod()',
-      kind: 'method' as const,
-      detail: 'Test method',
-      documentation: 'This is a test method'
-    }
-  ];
-  
-  if (isDebugEnabled) {
-    console.log('Simple AST completions:', testCompletions.map(c => c.label));
-  }
-  
-  return {
-    from: context.pos,
-    options: testCompletions.map(comp => ({
-      label: comp.label,
-      apply: comp.insertText,
-      type: comp.kind,
-      detail: comp.detail,
-      documentation: comp.documentation,
-      boost: 10
-    }))
-  };
+// 获取当前jsLanguage的函数
+export const getCurrentJsLanguage = (): 'js' | 'react' | 'vue' | 'ts' => {
+  return currentJsLanguage;
 };
 
-// 获取光标位置
-function getPositionFromContext(context: CompletionContext): { line: number; column: number } {
-  const line = context.state.doc.lineAt(context.pos);
-  return {
-    line: line.number,
-    column: context.pos - line.from
-  };
-}
-
-// 获取当前语言
-function getCurrentLanguage(context: CompletionContext): 'js' | 'ts' | 'react' | 'vue' {
-  // 从编辑器状态中获取语言信息
-  const state = context.state;
-  const code = state.doc.toString();
-  
-  // 检查是否有TypeScript语法
-  const hasTypeScript = code.includes(':') && (
-    code.includes('interface') || 
-    code.includes('type ') || 
-    code.includes('enum ') ||
-    code.includes('implements') ||
-    code.includes('extends') ||
-    /\w+:\s*(string|number|boolean|any|void|never|unknown|object|array|function)/.test(code)
-  );
-  
-  if (hasTypeScript) {
-    return 'ts';
-  }
-  
-  // 检查是否有JSX（React）语法
-  const hasJSX = code.includes('jsx') || 
-                 code.includes('React') ||
-                 code.includes('useState') ||
-                 code.includes('useEffect') ||
-                 code.includes('useRef') ||
-                 code.includes('useCallback') ||
-                 code.includes('useMemo') ||
-                 (code.includes('<') && code.includes('>') && code.includes('/'));
-  
-  if (hasJSX) {
-    return 'react';
-  }
-  
-  // 检查是否有Vue相关语法
-  const hasVue = code.includes('<template>') || 
-                 code.includes('vue') ||
-                 code.includes('setup()') ||
-                 code.includes('ref(') ||
-                 code.includes('reactive(') ||
-                 code.includes('computed(') ||
-                 code.includes('watch(') ||
-                 code.includes('v-if') ||
-                 code.includes('v-for') ||
-                 code.includes('v-model');
-  
-  if (hasVue) {
-    return 'vue';
-  }
-  
-  // 默认返回JavaScript
-  return 'js';
-}
-
-// 过滤补全建议
-function filterCompletions(completions: CompletionItem[], context: CompletionContext): CompletionItem[] {
-  const word = context.matchBefore(/\w*/);
-  if (!word) {
-    return completions;
-  }
-  
-  const userInput = word.text.toLowerCase();
-  
-  return completions.filter(comp => {
-    const label = comp.label.toLowerCase();
-    return label.includes(userInput) || label.startsWith(userInput);
-  });
-}
-
-// 映射补全类型到CodeMirror期望的格式
-function mapCompletionType(kind: string): string {
-  switch (kind) {
-    case 'variable':
-      return 'variable';
-    case 'function':
-      return 'function';
-    case 'method':
-      return 'method';
-    case 'property':
-      return 'property';
-    case 'class':
-      return 'class';
-    case 'keyword':
-      return 'keyword';
-    case 'module':
-      return 'module';
-    default:
-      return 'text';
-  }
-}
-
-// 智能代码分析器
-class SmartCodeAnalyzer {
-  private variableDefinitions = new Map<string, VariableDefinition>();
+// 简单的代码分析器 - 用于提取变量定义和对象属性
+class SimpleCodeAnalyzer {
+  private variableDefinitions = new Map<string, VariableInfo>();
   
   // 分析代码并提取变量定义
   analyzeCode(code: string): void {
@@ -246,9 +26,9 @@ class SmartCodeAnalyzer {
     try {
       // 使用简单的正则表达式分析变量定义
       this.analyzeVariableDefinitions(code);
-      console.log('Smart Code Analysis - Variable definitions:', this.variableDefinitions);
+      console.log('Simple Code Analysis - Variable definitions:', Array.from(this.variableDefinitions.keys()));
     } catch (error) {
-      console.warn('Smart code analysis failed:', error);
+      console.warn('Simple code analysis failed:', error);
     }
   }
   
@@ -268,8 +48,8 @@ class SmartCodeAnalyzer {
   }
   
   // 推断变量类型
-  private inferVariableType(varName: string, value: string): VariableDefinition {
-    const definition: VariableDefinition = {
+  private inferVariableType(varName: string, value: string): VariableInfo {
+    const definition: VariableInfo = {
       name: varName,
       type: 'unknown',
       properties: new Map(),
@@ -306,7 +86,7 @@ class SmartCodeAnalyzer {
   }
   
   // 提取对象属性
-  private extractObjectProperties(objectLiteral: string, definition: VariableDefinition): void {
+  private extractObjectProperties(objectLiteral: string, definition: VariableInfo): void {
     // 简单的对象字面量解析
     const propertyPattern = /(\w+)\s*:\s*([^,}]+)/g;
     let match;
@@ -340,7 +120,7 @@ class SmartCodeAnalyzer {
   }
   
   // 添加数组方法
-  private addArrayMethods(definition: VariableDefinition): void {
+  private addArrayMethods(definition: VariableInfo): void {
     const arrayMethods = [
       { name: 'length', type: 'property' as const, detail: 'number', documentation: 'Array length' },
       { name: 'push', type: 'method' as const, detail: 'function', documentation: 'Adds elements to the end of an array' },
@@ -368,7 +148,7 @@ class SmartCodeAnalyzer {
   }
   
   // 添加字符串方法
-  private addStringMethods(definition: VariableDefinition): void {
+  private addStringMethods(definition: VariableInfo): void {
     const stringMethods = [
       { name: 'length', type: 'property' as const, detail: 'number', documentation: 'String length' },
       { name: 'toUpperCase', type: 'method' as const, detail: 'function', documentation: 'Converts to uppercase' },
@@ -391,7 +171,7 @@ class SmartCodeAnalyzer {
   }
   
   // 添加数字方法
-  private addNumberMethods(definition: VariableDefinition): void {
+  private addNumberMethods(definition: VariableInfo): void {
     const numberMethods = [
       { name: 'toString', type: 'method' as const, detail: 'function', documentation: 'Converts to string' },
       { name: 'toFixed', type: 'method' as const, detail: 'function', documentation: 'Formats number with fixed decimals' },
@@ -405,7 +185,7 @@ class SmartCodeAnalyzer {
   }
   
   // 添加日期方法
-  private addDateMethods(definition: VariableDefinition): void {
+  private addDateMethods(definition: VariableInfo): void {
     const dateMethods = [
       { name: 'getFullYear', type: 'method' as const, detail: 'function', documentation: 'Returns full year' },
       { name: 'getMonth', type: 'method' as const, detail: 'function', documentation: 'Returns month (0-11)' },
@@ -427,7 +207,7 @@ class SmartCodeAnalyzer {
   }
   
   // 添加通用对象方法
-  private addCommonObjectMethods(definition: VariableDefinition): void {
+  private addCommonObjectMethods(definition: VariableInfo): void {
     const commonMethods = [
       { name: 'toString', type: 'method' as const, detail: 'function', documentation: 'Returns string representation' },
       { name: 'valueOf', type: 'method' as const, detail: 'function', documentation: 'Returns primitive value' },
@@ -480,46 +260,348 @@ class SmartCodeAnalyzer {
   }
   
   // 获取所有变量定义
-  getVariableDefinitions(): Map<string, VariableDefinition> {
+  getVariableDefinitions(): Map<string, VariableInfo> {
     return this.variableDefinitions;
   }
 }
 
-// 变量定义接口
-interface VariableDefinition {
+// 变量信息接口
+interface VariableInfo {
   name: string;
   type: string;
-  properties: Map<string, PropertyDefinition>;
-  methods: Map<string, MethodDefinition>;
+  properties: Map<string, PropertyInfo>;
+  methods: Map<string, MethodInfo>;
 }
 
-interface PropertyDefinition {
+interface PropertyInfo {
   name: string;
   type: string;
   documentation: string;
 }
 
-interface MethodDefinition {
+interface MethodInfo {
   name: string;
   type: 'method' | 'property';
   detail: string;
   documentation: string;
 }
 
-// 全局智能代码分析器实例
-const smartAnalyzer = new SmartCodeAnalyzer();
+// 全局简单代码分析器实例
+const simpleAnalyzer = new SimpleCodeAnalyzer();
 
 // 生成智能对象属性补全
 function generateSmartObjectPropertyCompletions(objectName: string, code: string): CompletionItem[] {
   // 分析代码
-  smartAnalyzer.analyzeCode(code);
+  simpleAnalyzer.analyzeCode(code);
   
   // 获取变量的补全建议
-  const completions = smartAnalyzer.getCompletionsForVariable(objectName);
+  const completions = simpleAnalyzer.getCompletionsForVariable(objectName);
   
   console.log(`Smart Completion - Found ${completions.length} completions for ${objectName}:`, completions.map(c => c.label));
   
   return completions;
+}
+
+// 组合补全源 - 先尝试AST补全，如果没有结果则使用默认补全
+export const combinedCompletionSource: CompletionSource = (context: CompletionContext) => {
+  try {
+    // 首先尝试我们的AST补全
+    const astResult = enhancedSmartCompletionSource(context);
+    
+    // 检查结果是否为Promise
+    if (astResult instanceof Promise) {
+      return astResult.then(result => {
+        if (result && result.options && result.options.length > 0) {
+          console.log('Combined Completion - Using AST completions (async)');
+          return result;
+        }
+        console.log('Combined Completion - Using fallback completions (async)');
+        return generateFallbackCompletions(context, getCurrentJsLanguage());
+      });
+    }
+    
+    // 同步结果
+    if (astResult && astResult.options && astResult.options.length > 0) {
+      console.log('Combined Completion - Using AST completions');
+      return astResult;
+    }
+    
+    // 如果没有AST补全结果，使用备用补全
+    console.log('Combined Completion - Using fallback completions');
+    return generateFallbackCompletions(context, getCurrentJsLanguage());
+    
+  } catch (error) {
+    console.error('Combined Completion Error:', error);
+    // 出错时使用备用补全
+    return generateFallbackCompletions(context, getCurrentJsLanguage());
+  }
+};
+
+// 增强的组合补全源 - 包含JavaScript关键字和AST补全
+export const enhancedCombinedCompletionSource: CompletionSource = (context: CompletionContext) => {
+  try {
+    // 首先尝试我们的AST补全
+    const astResult = enhancedSmartCompletionSource(context);
+    
+    // 检查结果是否为Promise
+    if (astResult instanceof Promise) {
+      return astResult.then(result => {
+        if (result && result.options && result.options.length > 0) {
+          console.log('Enhanced Combined Completion - Using AST completions (async)');
+          return result;
+        }
+        console.log('Enhanced Combined Completion - Using keyword completions (async)');
+        return generateKeywordCompletions(context);
+      });
+    }
+    
+    // 同步结果
+    if (astResult && astResult.options && astResult.options.length > 0) {
+      console.log('Enhanced Combined Completion - Using AST completions');
+      return astResult;
+    }
+    
+    // 如果没有AST补全结果，使用关键字补全
+    console.log('Enhanced Combined Completion - Using keyword completions');
+    return generateKeywordCompletions(context);
+    
+  } catch (error) {
+    console.error('Enhanced Combined Completion Error:', error);
+    // 出错时使用关键字补全
+    return generateKeywordCompletions(context);
+  }
+};
+
+// AST补全源
+export const astCompletionSource: CompletionSource = async (context: CompletionContext) => {
+  // 调试信息
+  const isDebugEnabled = localStorage.getItem('debugAST') === 'true';
+  
+  const astService = new ASTAnalysisService();
+  const code = context.state.doc.toString();
+  const position = getPositionFromContext(context);
+  const language = getCurrentJsLanguage();
+
+  if (isDebugEnabled) {
+    console.log('AST Completion Debug:', {
+      language,
+      position,
+      codeLength: code.length,
+      cursorPos: context.pos
+    });
+  }
+  
+  try {
+    // 解析代码生成AST
+    const ast = astService.parseCode(code, language);
+    
+    if (!ast) {
+      if (isDebugEnabled) {
+        console.log('AST parsing failed - no AST generated');
+      }
+      return null; // 如果解析失败，返回null
+    }
+    
+    if (isDebugEnabled) {
+      console.log('AST parsed successfully:', ast.type);
+    }
+    
+    // 分析上下文
+    const contextInfo = astService.analyzeContext(ast, position, language, code);
+    
+    if (isDebugEnabled) {
+      console.log('Context analyzed:', {
+        objectType: contextInfo.objectType,
+        accessPath: contextInfo.accessPath,
+        scopeVariables: contextInfo.scope.variables.size
+      });
+    }
+    
+    // 生成补全建议
+    const completions = astService.generateCompletions(contextInfo);
+    
+    if (isDebugEnabled) {
+      console.log('Generated completions:', completions.length);
+    }
+    
+    // 过滤基于用户输入的补全
+    const filteredCompletions = filterCompletions(completions, context);
+    
+    if (filteredCompletions.length === 0) {
+      if (isDebugEnabled) {
+        console.log('No filtered completions found');
+      }
+      return null;
+    }
+    
+    if (isDebugEnabled) {
+      console.log('Filtered completions:', filteredCompletions.map(c => c.label));
+    }
+    
+    return {
+      from: context.pos,
+      options: filteredCompletions.map(comp => ({
+        label: comp.label,
+        apply: comp.insertText,
+        type: comp.kind,
+        detail: comp.detail,
+        documentation: comp.documentation,
+        boost: getCompletionBoost(comp, contextInfo)
+      }))
+    };
+  } catch (error) {
+    console.warn('AST completion failed:', error);
+    return null; // 出错时返回null，不影响其他补全源
+  }
+};
+// 获取光标位置
+function getPositionFromContext(context: CompletionContext): { line: number; column: number } {
+  const line = context.state.doc.lineAt(context.pos);
+  return {
+    line: line.number,
+    column: context.pos - line.from
+  };
+}
+
+
+
+// 过滤补全建议
+function filterCompletions(completions: CompletionItem[], context: CompletionContext): CompletionItem[] {
+  const word = context.matchBefore(/\w*/);
+  if (!word) {
+    return completions;
+  }
+  
+  const userInput = word.text.toLowerCase();
+  
+  return completions.filter(comp => {
+    const label = comp.label.toLowerCase();
+    return label.includes(userInput) || label.startsWith(userInput);
+  });
+}
+
+// 映射补全类型到CodeMirror期望的格式
+function mapCompletionType(kind: string): string {
+  switch (kind) {
+    case 'variable':
+      return 'variable';
+    case 'function':
+      return 'function';
+    case 'method':
+      return 'method';
+    case 'property':
+      return 'property';
+    case 'class':
+      return 'class';
+    case 'keyword':
+      return 'keyword';
+    case 'module':
+      return 'module';
+    default:
+      return 'text';
+  }
+}
+
+
+
+
+
+// 生成JavaScript关键字补全
+function generateKeywordCompletions(context: CompletionContext) {
+  const word = context.matchBefore(/\w*/);
+  const from = word ? word.from : context.pos;
+  
+  const keywordCompletions: CompletionItem[] = [
+    // 变量声明关键字
+    { label: 'const', insertText: 'const ', kind: 'keyword', detail: 'keyword', documentation: 'Declare a constant variable' },
+    { label: 'let', insertText: 'let ', kind: 'keyword', detail: 'keyword', documentation: 'Declare a block-scoped variable' },
+    { label: 'var', insertText: 'var ', kind: 'keyword', detail: 'keyword', documentation: 'Declare a function-scoped variable' },
+    
+    // 函数关键字
+    { label: 'function', insertText: 'function ', kind: 'keyword', detail: 'keyword', documentation: 'Declare a function' },
+    { label: 'return', insertText: 'return ', kind: 'keyword', detail: 'keyword', documentation: 'Return from function' },
+    
+    // 控制流关键字
+    { label: 'if', insertText: 'if () {\n\t\n}', kind: 'keyword', detail: 'keyword', documentation: 'If statement' },
+    { label: 'else', insertText: 'else {\n\t\n}', kind: 'keyword', detail: 'keyword', documentation: 'Else statement' },
+    { label: 'for', insertText: 'for (let i = 0; i < array.length; i++) {\n\t\n}', kind: 'keyword', detail: 'keyword', documentation: 'For loop' },
+    { label: 'while', insertText: 'while () {\n\t\n}', kind: 'keyword', detail: 'keyword', documentation: 'While loop' },
+    { label: 'do', insertText: 'do {\n\t\n} while ();', kind: 'keyword', detail: 'keyword', documentation: 'Do-while loop' },
+    { label: 'switch', insertText: 'switch () {\n\tcase :\n\t\tbreak;\n\tdefault:\n\t\tbreak;\n}', kind: 'keyword', detail: 'keyword', documentation: 'Switch statement' },
+    { label: 'case', insertText: 'case :\n\tbreak;', kind: 'keyword', detail: 'keyword', documentation: 'Case statement' },
+    { label: 'default', insertText: 'default:\n\tbreak;', kind: 'keyword', detail: 'keyword', documentation: 'Default case' },
+    { label: 'break', insertText: 'break;', kind: 'keyword', detail: 'keyword', documentation: 'Break statement' },
+    { label: 'continue', insertText: 'continue;', kind: 'keyword', detail: 'keyword', documentation: 'Continue statement' },
+    
+    // 类和对象关键字
+    { label: 'class', insertText: 'class  {\n\tconstructor() {\n\t\t\n\t}\n}', kind: 'keyword', detail: 'keyword', documentation: 'Declare a class' },
+    { label: 'new', insertText: 'new ', kind: 'keyword', detail: 'keyword', documentation: 'Create new instance' },
+    { label: 'this', insertText: 'this', kind: 'keyword', detail: 'keyword', documentation: 'Reference to current object' },
+    { label: 'super', insertText: 'super()', kind: 'keyword', detail: 'keyword', documentation: 'Call parent constructor' },
+    
+    // 模块关键字
+    { label: 'import', insertText: 'import  from \'\';', kind: 'keyword', detail: 'keyword', documentation: 'Import module' },
+    { label: 'export', insertText: 'export ', kind: 'keyword', detail: 'keyword', documentation: 'Export module' },
+    { label: 'default', insertText: 'default ', kind: 'keyword', detail: 'keyword', documentation: 'Default export' },
+    
+    // 异步关键字
+    { label: 'async', insertText: 'async ', kind: 'keyword', detail: 'keyword', documentation: 'Async function' },
+    { label: 'await', insertText: 'await ', kind: 'keyword', detail: 'keyword', documentation: 'Await promise' },
+    { label: 'Promise', insertText: 'Promise', kind: 'keyword', detail: 'keyword', documentation: 'Promise constructor' },
+    
+    // 错误处理
+    { label: 'try', insertText: 'try {\n\t\n} catch (error) {\n\t\n}', kind: 'keyword', detail: 'keyword', documentation: 'Try-catch block' },
+    { label: 'catch', insertText: 'catch (error) {\n\t\n}', kind: 'keyword', detail: 'keyword', documentation: 'Catch block' },
+    { label: 'throw', insertText: 'throw new Error(\'\');', kind: 'keyword', detail: 'keyword', documentation: 'Throw error' },
+    
+    // 其他关键字
+    { label: 'typeof', insertText: 'typeof ', kind: 'keyword', detail: 'keyword', documentation: 'Type of operator' },
+    { label: 'instanceof', insertText: 'instanceof ', kind: 'keyword', detail: 'keyword', documentation: 'Instance of operator' },
+    { label: 'delete', insertText: 'delete ', kind: 'keyword', detail: 'keyword', documentation: 'Delete property' },
+    { label: 'void', insertText: 'void ', kind: 'keyword', detail: 'keyword', documentation: 'Void operator' },
+    { label: 'yield', insertText: 'yield ', kind: 'keyword', detail: 'keyword', documentation: 'Yield operator' },
+    
+    // 全局对象
+    { label: 'console', insertText: 'console', kind: 'variable', detail: 'object', documentation: 'Console object for logging' },
+    { label: 'document', insertText: 'document', kind: 'variable', detail: 'object', documentation: 'Document object' },
+    { label: 'window', insertText: 'window', kind: 'variable', detail: 'object', documentation: 'Window object' },
+    { label: 'Math', insertText: 'Math', kind: 'variable', detail: 'object', documentation: 'Math object' },
+    { label: 'Date', insertText: 'Date', kind: 'variable', detail: 'function', documentation: 'Date constructor' },
+    { label: 'Array', insertText: 'Array', kind: 'variable', detail: 'function', documentation: 'Array constructor' },
+    { label: 'Object', insertText: 'Object', kind: 'variable', detail: 'function', documentation: 'Object constructor' },
+    { label: 'String', insertText: 'String', kind: 'variable', detail: 'function', documentation: 'String constructor' },
+    { label: 'Number', insertText: 'Number', kind: 'variable', detail: 'function', documentation: 'Number constructor' },
+    { label: 'Boolean', insertText: 'Boolean', kind: 'variable', detail: 'function', documentation: 'Boolean constructor' },
+    { label: 'JSON', insertText: 'JSON', kind: 'variable', detail: 'object', documentation: 'JSON object' },
+    { label: 'RegExp', insertText: 'RegExp', kind: 'variable', detail: 'function', documentation: 'Regular expression constructor' },
+    { label: 'Error', insertText: 'Error', kind: 'variable', detail: 'function', documentation: 'Error constructor' },
+    { label: 'Map', insertText: 'Map', kind: 'variable', detail: 'function', documentation: 'Map constructor' },
+    { label: 'Set', insertText: 'Set', kind: 'variable', detail: 'function', documentation: 'Set constructor' },
+    { label: 'WeakMap', insertText: 'WeakMap', kind: 'variable', detail: 'function', documentation: 'WeakMap constructor' },
+    { label: 'WeakSet', insertText: 'WeakSet', kind: 'variable', detail: 'function', documentation: 'WeakSet constructor' },
+    { label: 'Symbol', insertText: 'Symbol', kind: 'variable', detail: 'function', documentation: 'Symbol constructor' },
+    { label: 'Proxy', insertText: 'Proxy', kind: 'variable', detail: 'function', documentation: 'Proxy constructor' },
+    { label: 'Reflect', insertText: 'Reflect', kind: 'variable', detail: 'object', documentation: 'Reflect object' },
+    { label: 'Intl', insertText: 'Intl', kind: 'variable', detail: 'object', documentation: 'Internationalization API' }
+  ];
+  
+  const filteredCompletions = filterCompletions(keywordCompletions, context);
+  
+  if (filteredCompletions.length === 0) {
+    return null;
+  }
+  
+  return {
+    from: from,
+    options: filteredCompletions.map(comp => ({
+      label: comp.label,
+      apply: comp.insertText,
+      type: mapCompletionType(comp.kind),
+      detail: comp.detail,
+      documentation: comp.documentation,
+      boost: comp.kind === 'keyword' ? 20 : 10 // 关键字优先级更高
+    }))
+  };
 }
 
 // 生成备用补全
@@ -714,7 +796,7 @@ export const enhancedSmartCompletionSource: CompletionSource = (context: Complet
     console.log('Enhanced Smart Completion - Starting...');
     
     const code = context.state.doc.toString();
-    const language = getCurrentLanguage(context);
+    const language = getCurrentJsLanguage();
     
     console.log('Enhanced Smart Completion - Language:', language);
     
@@ -731,8 +813,8 @@ export const enhancedSmartCompletionSource: CompletionSource = (context: Complet
     console.log('Enhanced Smart Completion - Current word:', currentWord, 'from position:', from);
     
     // 分析代码，获取所有变量定义
-    smartAnalyzer.analyzeCode(code);
-    const variableDefinitions = smartAnalyzer.getVariableDefinitions();
+    simpleAnalyzer.analyzeCode(code);
+    const variableDefinitions = simpleAnalyzer.getVariableDefinitions();
     
     // 1. 检查是否在属性访问上下文中（如 user.name）
     const beforeCursor = code.slice(0, context.pos);
@@ -752,24 +834,21 @@ export const enhancedSmartCompletionSource: CompletionSource = (context: Complet
         comp.label.toLowerCase().startsWith(propertyPrefix.toLowerCase())
       );
       
-      if (filteredCompletions.length === 0) {
-        console.log('Enhanced Smart Completion - No matching property completions found');
-        return null;
+      if (filteredCompletions.length > 0) {
+        console.log('Enhanced Smart Completion - Returning property completions:', filteredCompletions.map(c => c.label));
+        
+        return {
+          from: from,
+          options: filteredCompletions.map(comp => ({
+            label: comp.label,
+            apply: comp.insertText,
+            type: mapCompletionType(comp.kind),
+            detail: comp.detail,
+            documentation: comp.documentation,
+            boost: getCompletionBoost(comp, { objectType: 'property', fileType: language } as ContextInfo) + 20
+          }))
+        };
       }
-      
-      console.log('Enhanced Smart Completion - Returning property completions:', filteredCompletions.map(c => c.label));
-      
-      return {
-        from: from,
-        options: filteredCompletions.map(comp => ({
-          label: comp.label,
-          apply: comp.insertText,
-          type: mapCompletionType(comp.kind),
-          detail: comp.detail,
-          documentation: comp.documentation,
-          boost: getCompletionBoost(comp, { objectType: 'property', fileType: language } as ContextInfo) + 20
-        }))
-      };
     }
     
     // 2. 检查是否在变量名输入中（如 user）
@@ -803,7 +882,7 @@ export const enhancedSmartCompletionSource: CompletionSource = (context: Complet
       };
     }
     
-    // 3. 检查是否在全局对象访问中（如 console.log）
+    // 2. 检查是否在全局对象访问中（如 console.log）
     const globalObjects = ['console', 'document', 'window', 'Math', 'Date', 'Array', 'Object', 'String', 'Number', 'Boolean'];
     const matchingGlobals = globalObjects.filter(name => 
       name.toLowerCase().startsWith(currentWord.toLowerCase())
@@ -834,7 +913,7 @@ export const enhancedSmartCompletionSource: CompletionSource = (context: Complet
       };
     }
     
-    // 4. 检查是否在方法调用中（如 console.log）
+    // 3. 检查是否在方法调用中（如 console.log）
     const methodCallMatch = beforeCursor.match(/(\w+)\.(\w*)$/);
     if (methodCallMatch) {
       const objectName = methodCallMatch[1];
@@ -853,6 +932,9 @@ export const enhancedSmartCompletionSource: CompletionSource = (context: Complet
       } else if (objectName === 'document') {
         methodCompletions = [
           { label: 'getElementById', insertText: 'getElementById()', kind: 'method', detail: 'function', documentation: 'Gets an element by its ID' },
+          { label: 'getElementByClassName', insertText: 'getElementByClassName()', kind: 'method', detail: 'function', documentation: 'Gets an element by its class name' },
+          { label: 'getElementByTagName', insertText: 'getElementByTagName()', kind: 'method', detail: 'function', documentation: 'Gets an element by its tag name' },
+          { label: 'getElementByAttribute', insertText: 'getElementByAttribute()', kind: 'method', detail: 'function', documentation: 'Gets an element by its attribute' },
           { label: 'querySelector', insertText: 'querySelector()', kind: 'method', detail: 'function', documentation: 'Selects the first element that matches a CSS selector' },
           { label: 'querySelectorAll', insertText: 'querySelectorAll()', kind: 'method', detail: 'function', documentation: 'Selects all elements that match a CSS selector' },
           { label: 'createElement', insertText: 'createElement()', kind: 'method', detail: 'function', documentation: 'Creates a new element' }
@@ -900,14 +982,14 @@ export const enhancedSmartCompletionSource: CompletionSource = (context: Complet
   }
 };
 
-// 智能补全源（使用智能代码分析器）
+// 智能补全源（使用AST分析服务）
 export const smartCompletionSource: CompletionSource = (context: CompletionContext) => {
   try {
     console.log('Smart Completion - Starting...');
     
     const code = context.state.doc.toString();
-    const language = getCurrentLanguage(context);
-    
+    const language = getCurrentJsLanguage();
+
     console.log('Smart Completion - Language:', language);
     
     // 检查是否在属性访问位置（如 user.）
@@ -922,29 +1004,26 @@ export const smartCompletionSource: CompletionSource = (context: CompletionConte
       const completions = generateSmartObjectPropertyCompletions(objectName, code);
       const filteredCompletions = filterCompletions(completions, context);
       
-      if (filteredCompletions.length === 0) {
-        console.log('Smart Completion - No property completions found');
-        return null;
+      if (filteredCompletions.length > 0) {
+        // 计算补全的起始位置
+        const word = context.matchBefore(/\w*/);
+        const from = word ? word.from : context.pos;
+        
+        console.log('Smart Completion - Returning property completions from position:', from);
+        console.log('Smart Completion - Property completions:', filteredCompletions.map(c => c.label));
+        
+        return {
+          from: from,
+          options: filteredCompletions.map(comp => ({
+            label: comp.label,
+            apply: comp.insertText,
+            type: mapCompletionType(comp.kind),
+            detail: comp.detail,
+            documentation: comp.documentation,
+            boost: getCompletionBoost(comp, { objectType: 'property', fileType: language } as ContextInfo)
+          }))
+        };
       }
-      
-      // 计算补全的起始位置
-      const word = context.matchBefore(/\w*/);
-      const from = word ? word.from : context.pos;
-      
-      console.log('Smart Completion - Returning property completions from position:', from);
-      console.log('Smart Completion - Property completions:', filteredCompletions.map(c => c.label));
-      
-      return {
-        from: from,
-        options: filteredCompletions.map(comp => ({
-          label: comp.label,
-          apply: comp.insertText,
-          type: mapCompletionType(comp.kind),
-          detail: comp.detail,
-          documentation: comp.documentation,
-          boost: getCompletionBoost(comp, { objectType: 'property', fileType: language } as ContextInfo)
-        }))
-      };
     }
     
     // 如果不是属性访问，返回null让其他补全源处理
@@ -957,139 +1036,7 @@ export const smartCompletionSource: CompletionSource = (context: CompletionConte
   }
 };
 
-// 增强的AST补全源（带缓存和性能监控）
-export const enhancedASTCompletionSource: CompletionSource = async (context: CompletionContext) => {
-  try {
-    console.log('AST Completion - Starting...');
-    
-    const code = context.state.doc.toString();
-    const position = getPositionFromContext(context);
-    const language = getCurrentLanguage(context);
-    
-    console.log('AST Completion - Position:', position, 'Language:', language);
-    
-    // 检查是否在属性访问位置（如 user.）
-    const beforeCursor = code.slice(0, context.pos);
-    const memberAccessMatch = beforeCursor.match(/(\w+)\.\s*$/);
-    
-    if (memberAccessMatch) {
-      const objectName = memberAccessMatch[1];
-      console.log('AST Completion - Detected member access for object:', objectName);
-      
-      // 生成智能对象属性补全
-      const completions = generateSmartObjectPropertyCompletions(objectName, code);
-      const filteredCompletions = filterCompletions(completions, context);
-      
-      if (filteredCompletions.length === 0) {
-        console.log('AST Completion - No property completions found');
-        return null;
-      }
-      
-      // 计算补全的起始位置
-      const word = context.matchBefore(/\w*/);
-      const from = word ? word.from : context.pos;
-      
-      console.log('AST Completion - Returning property completions from position:', from);
-      console.log('AST Completion - Property completions:', filteredCompletions.map(c => c.label));
-      
-      return {
-        from: from,
-        options: filteredCompletions.map(comp => ({
-          label: comp.label,
-          apply: comp.insertText,
-          type: mapCompletionType(comp.kind),
-          detail: comp.detail,
-          documentation: comp.documentation,
-          boost: getCompletionBoost(comp, { objectType: 'property', fileType: language } as ContextInfo)
-        }))
-      };
-    }
-    
-    // 如果不是属性访问，尝试解析完整AST
-    const astService = new ASTAnalysisService();
-    
-    // 尝试解析代码生成AST
-    const ast = astService.parseCode(code, language);
-    
-    if (!ast) {
-      console.log('AST Completion - Failed to parse AST, trying fallback');
-      return generateFallbackCompletions(context, language);
-    }
-    
-    console.log('AST Completion - AST parsed successfully');
-    
-    // 分析上下文
-    const contextInfo = astService.analyzeContext(ast, position, language, code);//这里的code也是新加的
-    console.log('AST Completion - Context analyzed:', contextInfo);
-    
-    // 生成补全建议
-    const completions = astService.generateCompletions(contextInfo);
-    console.log('AST Completion - Generated completions:', completions.length);
-    
-    // 过滤基于用户输入的补全
-    const filteredCompletions = filterCompletions(completions, context);
-    console.log('AST Completion - Filtered completions:', filteredCompletions.length);
-    
-    if (filteredCompletions.length === 0) {
-      console.log('AST Completion - No filtered completions, returning null');
-      return null;
-    }
-    
-    // 计算补全的起始位置
-    const word = context.matchBefore(/\w*/);
-    const from = word ? word.from : context.pos;
-    
-    console.log('AST Completion - Returning completions from position:', from);
-    console.log('AST Completion - Completions:', filteredCompletions.map(c => c.label));
-    
-    const completionResult = {
-      from: from,
-      options: filteredCompletions.map(comp => ({
-        label: comp.label,
-        apply: comp.insertText,
-        type: mapCompletionType(comp.kind),
-        detail: comp.detail,
-        documentation: comp.documentation,
-        boost: getCompletionBoost(comp, contextInfo)
-      }))
-    };
-    
-    console.log('AST Completion - Final result:', completionResult);
-    console.log('AST Completion - Number of options:', completionResult.options.length);
-    console.log('AST Completion - From position:', completionResult.from);
-    console.log('AST Completion - Context position:', context.pos);
-    
-    return completionResult;
-    
-  } catch (error) {
-    console.error('AST Completion Error:', error);
-    return generateFallbackCompletions(context, getCurrentLanguage(context));
-  }
-};
 
-// 测试补全源
-export const testCompletionSource: CompletionSource = (context) => {
-  console.log('Test completion triggered at position:', context.pos);
-  
-  const word = context.matchBefore(/\w*/);
-  const from = word ? word.from : context.pos;
-  
-  return {
-    from: from,
-    options: [
-      {
-        label: 'testVariable',
-        apply: 'testVariable',
-        type: 'variable'
-      },
-      {
-        label: 'testFunction',
-        apply: 'testFunction()',
-        type: 'function'
-      }
-    ]
-  };
-};
 
 // 导出工具函数
 export const clearCompletionCache = () => completionCache.clearCache();
