@@ -46,8 +46,7 @@ import {
     cssAutocomplete,
     lessAutocomplete,
     scssAutocomplete,
-    // jsAutocomplete,
-    jsAutocompleteWithAST,//改了这里
+    jsAutocompleteWithAST,
     reactAutocomplete,
     vueAutocomplete,
     tsAutocomplete,
@@ -58,11 +57,10 @@ import {
     vueSnippetCompletionSource,
     tsSnippetCompletionSource,
     completionKeymap,
-    closeBracketsKeymap//冲突
+    closeBracketsKeymap
 } from '../services/autocompleteService';
 import { enhancedASTCompletionSource, simpleASTCompletionSource, testCompletionSource, smartCompletionSource, enhancedSmartCompletionSource } from '../services/astCompletionService';
 import { autocompletion } from '@codemirror/autocomplete';
-import { runtimeErrorExtension, addRuntimeErrorsToEditor, clearRuntimeErrorsFromEditor } from '../services/lintService';
 import { runtimeErrorExtension, addRuntimeErrorsToEditor, clearRuntimeErrorsFromEditor, jsLint, htmlLint, cssLint, errorDecorationField } from '../services/lintService';
 
 // 创建编辑器的辅助函数
@@ -493,9 +491,7 @@ const Editor: React.FC = () => {
             }
         };
 
-        const defaultHtml = getDefaultHtml(jsLanguage);
-        const defaultCss = getDefaultCss(jsLanguage);
-        const defaultJs = getDefaultJs(jsLanguage);
+
         const defaultHtml = '<div id="app">Hello World</div>';
         const defaultCss = 'body { color: blue; }';
         const defaultJs = jsLanguage === 'react'
@@ -523,7 +519,6 @@ const Editor: React.FC = () => {
             // 只有在新建状态下才更新默认代码
             const defaultJs = jsLanguage === 'react'
                 ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nwindow.reactRoot = root;\nroot.render(<App />);'
-                ? 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nroot.render(<App />);'
                 : jsLanguage === 'vue'
                     ? 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\nconst app = createApp(component);\nwindow.vueApp = app;\napp.mount("#app");'
                     : jsLanguage === 'ts'
@@ -630,6 +625,7 @@ const Editor: React.FC = () => {
         setIsUpdatingFromState(true);
 
         // 创建新编辑器
+        // 创建HTML编辑器，同时使用自动完成和lint扩展
         createEditor(
             htmlElement,
             html(),
@@ -640,7 +636,6 @@ const Editor: React.FC = () => {
             htmlAutocomplete,
             htmlLint
         );
-        const newHtmlEditor = createEditor(htmlElement,html(), setHtmlEditor, setHtmlCode, htmlCode, true, htmlAutocomplete);
 
         // 根据CSS语言选择对应的扩展和自动补全
         let cssExtension: Extension;
@@ -662,28 +657,20 @@ const Editor: React.FC = () => {
                 break;
         }
 
-        const newCssEditor = createEditor(cssElement, cssExtension, setCssEditor, setCssCode, cssCode, true, cssAutocompleteExt);
-
+        // 创建CSS编辑器，同时使用自动完成和lint扩展
         createEditor(
             cssElement,
-            css(),
+            cssExtension,
             setCssEditor,
             setCssCode,
             cssCode,
             true,
-            cssAutocomplete,
+            cssAutocompleteExt,
             cssLint
         );
 
-        const jsLangExt = jsLanguage === 'react' ? javascript({ jsx: true }) :
-            jsLanguage === 'vue' ? vue() :
-                jsLanguage === 'ts' ? javascript({ typescript: true }) :
-                    javascript();
-
-        const jsAutocompleteExt = jsLanguage === 'react' ? reactAutocomplete :
-            jsLanguage === 'vue' ? vueAutocomplete :
-                jsLanguage === 'ts' ? tsAutocomplete :
-                    jsAutocomplete;
+        let jsAutocompleteExt;
+        let jsExtension;
         switch (jsLanguage) {
             case 'react':
                 jsExtension = javascript({ typescript: true });
@@ -712,17 +699,16 @@ const Editor: React.FC = () => {
                 break;
         }
 
-        const newJsEditor = createEditor(jsElement, jsExtension, setJsEditor, setJsCode, jsCode, true, jsAutocompleteExt, runtimeErrorExtension);
-
+        // 创建JavaScript编辑器，同时使用运行时错误扩展和静态lint扩展
         createEditor(
             jsElement,
-            jsLangExt,
+            jsExtension,
             setJsEditor,
             setJsCode,
             jsCode,
             true,
             jsAutocompleteExt,
-            jsLint
+            [runtimeErrorExtension, jsLint] // 合并两个lint扩展
         );
 
         // 延迟重置isUpdatingFromState标志，确保编辑器完全初始化
@@ -740,8 +726,7 @@ const Editor: React.FC = () => {
             if (cssEditor) cssEditor.destroy();
             if (jsEditor) jsEditor.destroy();
         };
-    }, [shouldReinitializeEditors, jsLanguage, cssLanguage, isPenLoaded]); // 移除代码内容依赖，避免无限循环
-    }, [isPenLoaded, shouldReinitializeEditors, jsLanguage]); // 统一的依赖项
+    }, [shouldReinitializeEditors, jsLanguage, cssLanguage, isPenLoaded]); // 统一的依赖项
 
     // 当React state变化时，同步更新编辑器内容（不重建编辑器）
     useEffect(() => {
@@ -1074,57 +1059,61 @@ const Editor: React.FC = () => {
                             : 'console.log("Hello World");';
 
                 setJsCode(defaultJs);
-            if (isDefaultJs || isDefaultHtml || isDefaultCss) {
-                // 获取新语言对应的默认代码
-                const getNewDefaultHtml = () => {
-                    switch (newLanguage) {
-                        case 'react':
-                        case 'vue':
-                            return '<div id="app"></div>';
-                        default:
-                            return '<div id="app">Hello World</div>';
+                if (isDefaultJs || isDefaultHtml || isDefaultCss) {
+                    // 获取新语言对应的默认代码
+                    const getNewDefaultHtml = () => {
+                        switch (newLanguage) {
+                            case 'react':
+                            case 'vue':
+                                return '<div id="app"></div>';
+                            default:
+                                return '<div id="app">Hello World</div>';
+                        }
+                    };
+
+                    const getNewDefaultCss = () => {
+                        switch (newLanguage) {
+                            case 'react':
+                            case 'vue':
+                                return 'body {\n  font-family: -apple-system, BlinkMacSystemFont, sans-serif;\n  margin: 0;\n  padding: 20px;\n}';
+                            default:
+                                return 'body { color: blue; }';
+                        }
+                    };
+
+                    const getNewDefaultJs = () => {
+                        switch (newLanguage) {
+                            case 'react':
+                                return 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nwindow.reactRoot = root;\nroot.render(<App />);';
+                            case 'vue':
+                                return 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\nconst app = createApp(component);\nwindow.vueApp = app;\napp.mount("#app");';
+                            case 'ts':
+                                return 'console.log("Hello TypeScript!");';
+                            default:
+                                return 'console.log("Hello World");';
+                        }
+                    };
+
+                    const newDefaultHtml = getNewDefaultHtml();
+                    const newDefaultCss = getNewDefaultCss();
+                    const newDefaultJs = getNewDefaultJs();
+
+                    // 只更新是默认内容的部分
+                    if (isDefaultHtml) setHtmlCode(newDefaultHtml);
+                    if (isDefaultCss) {
+                        setCssCode(newDefaultCss);
+                        setCompiledCss(newDefaultCss);
                     }
-                };
-
-                const getNewDefaultCss = () => {
-                    switch (newLanguage) {
-                        case 'react':
-                        case 'vue':
-                            return 'body {\n  font-family: -apple-system, BlinkMacSystemFont, sans-serif;\n  margin: 0;\n  padding: 20px;\n}';
-                        default:
-                            return 'body { color: blue; }';
+                    if (isDefaultJs) {
+                        setJsCode(newDefaultJs);
+                        setCompiledJs(newDefaultJs);
                     }
-                };
-
-                const getNewDefaultJs = () => {
-                    switch (newLanguage) {
-                        case 'react':
-                            return 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nwindow.reactRoot = root;\nroot.render(<App />);';
-                        case 'vue':
-                            return 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\nconst app = createApp(component);\nwindow.vueApp = app;\napp.mount("#app");';
-                        case 'ts':
-                            return 'console.log("Hello TypeScript!");';
-                        default:
-                            return 'console.log("Hello World");';
-                    }
-                };
-
-                const newDefaultHtml = getNewDefaultHtml();
-                const newDefaultCss = getNewDefaultCss();
-                const newDefaultJs = getNewDefaultJs();
-
-                // 只更新是默认内容的部分
-                if (isDefaultHtml) setHtmlCode(newDefaultHtml);
-                if (isDefaultCss) {
-                    setCssCode(newDefaultCss);
-                    setCompiledCss(newDefaultCss);
-                }
-                if (isDefaultJs) {
-                    setJsCode(newDefaultJs);
-                    setCompiledJs(newDefaultJs);
                 }
             }
-        }
+
+            // 标记需要重新初始化编辑器
+            setShouldReinitializeEditors(true);
+        };
 
         // 标记需要重新初始化编辑器
         setShouldReinitializeEditors(true);
@@ -1135,23 +1124,6 @@ const Editor: React.FC = () => {
         const newState = debugManagerRef.current.toggle();
         setDebugEnabled(newState);
     };
-
-    useEffect(() => {
-        const handleEditorChanges = () => {
-            // 编辑器内容变化时的处理逻辑
-            if (htmlEditor && cssEditor && jsEditor) {
-                const newHtmlCode = htmlEditor.state.doc.toString();
-                const newCssCode = cssEditor.state.doc.toString();
-                const newJsCode = jsEditor.state.doc.toString();
-
-                if (newHtmlCode !== htmlCode) setHtmlCode(newHtmlCode);
-                if (newCssCode !== cssCode) setCssCode(newCssCode);
-                if (newJsCode !== jsCode) setJsCode(newJsCode);
-            }
-        };
-
-        handleEditorChanges();
-    }, [htmlEditor, cssEditor, jsEditor]);
 
     return (
         <PageContainer style={{ height: '100vh', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -1822,3 +1794,4 @@ const Editor: React.FC = () => {
 };
 
 export default Editor;
+
