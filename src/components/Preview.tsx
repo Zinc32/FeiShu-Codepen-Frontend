@@ -157,44 +157,68 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
     if (!doc) return;
 
     try {
-      // 使用 codemirror/lint 的 htmlLinter 来检测HTML错误
+      // 使用更严格的HTML错误检测
       let hasHtmlError = false;
-      try {
-        // 创建一个临时的EditorView来运行htmlLinter
-        const tempState = EditorState.create({
-          doc: html
-        });
-        const tempView = new EditorView({
-          state: tempState,
-          parent: document.createElement('div')
-        });
+      const trimmedHtml = html.trim();
 
-        // 使用与Editor组件相同的htmlLinter函数
-        const diagnostics = htmlLinter(tempView);
-        hasHtmlError = diagnostics.length > 0;
+      if (trimmedHtml !== '') {
+        try {
+          // 首先尝试使用htmlLinter进行专业检测
+          const tempState = EditorState.create({
+            doc: html
+          });
+          const tempView = new EditorView({
+            state: tempState,
+            parent: document.createElement('div')
+          });
 
-        // 清理临时的EditorView
-        tempView.destroy();
-      } catch (error) {
-        console.warn('Error running HTML linter:', error);
-        // 如果linter出错，使用简单的检查作为后备
-        hasHtmlError = html.trim() !== '' && (
-          (html.includes('<') && !html.includes('>')) ||
-          (html.match(/</g) || []).length !== (html.match(/>/g) || []).length
-        );
+          const diagnostics = htmlLinter(tempView);
+          hasHtmlError = diagnostics.length > 0;
+
+          tempView.destroy();
+        } catch (error) {
+          console.warn('Error running HTML linter:', error);
+        }
+
+        // 如果htmlLinter没有检测到错误，使用更严格的后备检测
+        if (!hasHtmlError) {
+          // 检查标签匹配
+          const openTags = (trimmedHtml.match(/</g) || []).length;
+          const closeTags = (trimmedHtml.match(/>/g) || []).length;
+
+          // 检查是否有不匹配的标签
+          if (openTags !== closeTags) {
+            hasHtmlError = true;
+          } else {
+            // 检查是否有不完整的标签（以<开头但不以>结尾的行）
+            const lines = trimmedHtml.split('\n');
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              if (trimmedLine.startsWith('<') && !trimmedLine.includes('>')) {
+                hasHtmlError = true;
+                break;
+              }
+            }
+          }
+        }
       }
 
-      // 如果HTML有错误，只渲染基本的HTML和CSS
-      if (hasHtmlError) {
-        // 创建一个临时的div来解析HTML内容
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = html;
+      // 调试信息
+      console.log('HTML error detection result:', hasHtmlError, 'HTML length:', html.length, 'HTML content:', html.substring(0, 100));
 
-        // 移除所有script标签
-        const scripts = tempDiv.getElementsByTagName('script');
-        while (scripts.length > 0) {
-          scripts[0].parentNode?.removeChild(scripts[0]);
-        }
+      // 如果HTML有错误，只渲染基本的HTML和CSS，完全不执行JavaScript
+      if (hasHtmlError) {
+        console.log('HTML error detected, rendering HTML/CSS only without JavaScript');
+        // 直接处理HTML字符串，移除所有script标签和事件处理器
+        let cleanHtml = html
+          // 移除所有script标签及其内容
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          // 移除所有事件处理器属性
+          .replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
+          // 移除javascript:协议
+          .replace(/javascript:/gi, '')
+          // 移除data:协议（可能包含JavaScript）
+          .replace(/data:text\/html[^"']*["']/gi, '');
 
         const content = `
           <!DOCTYPE html>
@@ -212,7 +236,7 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
               </style>
             </head>
             <body>
-              ${tempDiv.innerHTML}
+              ${cleanHtml}
             </body>
           </html>
         `;
@@ -223,6 +247,7 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
         return;
       }
 
+      // 只有在HTML没有错误的情况下，才继续处理JavaScript
       // 检查是否有静态错误，如果有则不执行JavaScript
       if (hasStaticErrors) {
         console.log('Static errors detected, executing JavaScript but not reporting runtime errors');
