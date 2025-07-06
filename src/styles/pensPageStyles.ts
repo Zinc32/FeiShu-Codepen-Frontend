@@ -85,7 +85,7 @@ export const PenCard = styled(Link)`
   text-decoration: none;
   color: inherit;
   transition: transform 0.2s, box-shadow 0.2s;
-  min-height: 200px;
+  height: 200px;
 
   &:hover {
     transform: translateY(-2px);

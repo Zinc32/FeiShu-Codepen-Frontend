@@ -336,8 +336,11 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
           <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
         `;
       } else if (jsLanguage === 'ts') {
+        // TypeScript需要加载TypeScript编译器和React库（因为TypeScript代码可能包含React）
         libraryScripts = `
           <script src="https://cdnjs.cloudflare.com/ajax/libs/typescript/5.3.3/typescript.min.js"></script>
+          <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+          <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
         `;
       }
 
@@ -537,6 +540,22 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
                       }
                     });
                     codeToExecute = result.outputText || codeToExecute;
+                    
+                    // TypeScript编译后可能还包含JSX，需要进一步用Babel编译
+                    if (window.Babel && codeToExecute.includes('React.createElement') || codeToExecute.includes('<')) {
+                      try {
+                        const babelResult = window.Babel.transform(codeToExecute, {
+                          presets: [
+                            ["env", { targets: "defaults" }],
+                            ["react", { runtime: "classic" }]
+                          ],
+                          plugins: [],
+                        });
+                        codeToExecute = babelResult.code || codeToExecute;
+                      } catch (babelError) {
+                        console.warn('Failed to compile TypeScript JSX with Babel:', babelError);
+                      }
+                    }
                   }
                 } catch (compileError) {
                   console.warn('Failed to compile TypeScript code:', compileError);
@@ -691,6 +710,22 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
                     }
                   });
                   codeToExecute = result.outputText || codeToExecute;
+                  
+                  // TypeScript编译后可能还包含JSX，需要进一步用Babel编译
+                  if (window.Babel && (codeToExecute.includes('React.createElement') || codeToExecute.includes('<'))) {
+                    try {
+                      const babelResult = window.Babel.transform(codeToExecute, {
+                        presets: [
+                          ["env", { targets: "defaults" }],
+                          ["react", { runtime: "classic" }]
+                        ],
+                        plugins: [],
+                      });
+                      codeToExecute = babelResult.code || codeToExecute;
+                    } catch (babelError) {
+                      console.warn('Failed to compile TypeScript JSX with Babel:', babelError);
+                    }
+                  }
                 }
               } catch (compileError) {
                 console.warn('Failed to compile TypeScript code:', compileError);
