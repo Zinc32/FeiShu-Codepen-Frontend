@@ -16,7 +16,7 @@ import {
     PreviewHeader,
     PreviewTitle,
     PreviewContent
-} from '../styles/PreviewPage.styles';
+} from '../styles/previewPageStyles';
 
 const PreviewPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();

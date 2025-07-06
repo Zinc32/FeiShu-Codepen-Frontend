@@ -349,6 +349,7 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
         libraryScripts = `
           <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
           <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+          <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
         `;
       } else if (jsLanguage === 'vue') {
         libraryScripts = `
@@ -358,6 +359,16 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
         libraryScripts = `
           <script src="https://cdnjs.cloudflare.com/ajax/libs/typescript/5.3.3/typescript.min.js"></script>
         `;
+<<<<<<< HEAD
+=======
+      }
+
+      // 为所有语言都加载 Babel，用于编译导入的代码
+      if (jsLanguage !== 'react') {
+        libraryScripts += `
+          <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+        `;
+>>>>>>> origin/main
       }
 
       // 清理 JavaScript 代码，移除测试用的注释和危险代码
@@ -469,6 +480,133 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
                   return true; // 阻止默认错误处理
                 };
                 
+                // 提供增量更新函数
+                window.executeUserCode = function(newCode) {
+                  
+                  // 清空之前的错误但不发送清除消息（保持错误显示的连续性）
+                  var previousErrorCount = runtimeErrors.length;
+                  runtimeErrors = [];
+                  var executionSuccessful = false;
+                  
+                  try {
+                    // 清理之前的 React 根节点（如果存在）
+                    if (window.reactRoot) {
+                      try {
+                        window.reactRoot.unmount();
+                      } catch (e) {
+                        // 忽略卸载错误
+                      }
+                      window.reactRoot = null;
+                    }
+                    
+                    // 清理之前的 Vue 应用（如果存在）
+                    if (window.vueApp) {
+                      try {
+                        window.vueApp.unmount();
+                      } catch (e) {
+                        // 忽略卸载错误
+                      }
+                      window.vueApp = null;
+                    }
+                    
+                    // 编译代码（如果需要）
+                    let codeToExecute = newCode;
+                    
+                    // 如果是 React 代码，需要编译 JSX
+                    if ('${jsLanguage}' === 'react') {
+                      try {
+                        if (window.Babel) {
+                          const result = window.Babel.transform(codeToExecute, {
+                            presets: [
+                              ["env", { targets: "defaults" }],
+                              ["react", { runtime: "classic" }]
+                            ],
+                            plugins: [],
+                          });
+                          codeToExecute = result.code || codeToExecute;
+                        }
+                      } catch (compileError) {
+                        console.warn('Failed to compile React code:', compileError);
+                      }
+                    }
+                    
+                    // 如果是 TypeScript 代码，需要编译
+                    if ('${jsLanguage}' === 'ts') {
+                      try {
+                        if (window.ts) {
+                          const result = window.ts.transpileModule(codeToExecute, {
+                            compilerOptions: {
+                              module: window.ts.ModuleKind.ESNext,
+                              target: window.ts.ScriptTarget.ES2020,
+                              jsx: window.ts.JsxEmit.Preserve,
+                              strict: false,
+                              esModuleInterop: true,
+                              allowSyntheticDefaultImports: true,
+                              skipLibCheck: true
+                            }
+                          });
+                          codeToExecute = result.outputText || codeToExecute;
+                        }
+                      } catch (compileError) {
+                        console.warn('Failed to compile TypeScript code:', compileError);
+                      }
+                    }
+                    
+                    eval(codeToExecute);
+                    executionSuccessful = true;
+                    
+                    // 延迟检查是否需要清除错误，避免时序竞争
+                    setTimeout(function() {
+                      if (executionSuccessful && previousErrorCount > 0 && runtimeErrors.length === 0) {
+                        try {
+                          window.parent.postMessage({
+                            type: 'runtime-error',
+                            errors: []
+                          }, '*');
+                        } catch (e) {
+                          console.warn('Failed to send clear message:', e);
+                        }
+                      }
+                    }, 50); // 给 window.onerror 足够时间处理
+                    
+                  } catch (error) {
+                    // 直接处理eval错误，解析正确的行号
+                    var errorLine = 1; // 默认第1行
+                    
+                    // 尝试从错误堆栈中解析行号
+                    if (error.stack) {
+                      var stackLines = error.stack.split('\\n');
+                      for (var i = 0; i < stackLines.length; i++) {
+                        var line = stackLines[i];
+                        // 查找eval中的行号信息：<anonymous>:行号:列号
+                        var match = line.match(/<anonymous>:(\\d+):(\\d+)/);
+                        if (match) {
+                          errorLine = parseInt(match[1], 10);
+                          break;
+                        }
+                      }
+                    }
+                    
+                    // 直接创建错误对象并发送
+                    var errorObj = {
+                      line: errorLine,
+                      column: 0,
+                      message: 'Runtime error: ' + (error.message || '未知错误'),
+                      severity: 'error'
+                    };
+                    
+                    runtimeErrors.push(errorObj);
+                    
+                    try {
+                      window.parent.postMessage({
+                        type: 'runtime-error',
+                        errors: runtimeErrors
+                      }, '*');
+                    } catch (e) {
+                      console.warn('Failed to send eval error:', e);
+                    }
+                  }
+                };
                 // 捕获 Promise 拒绝错误
                 window.addEventListener('unhandledrejection', function(event) {
                   console.error('Unhandled promise rejection:', event.reason);
@@ -499,11 +637,75 @@ const Preview: React.FC<PreviewProps> = ({ html, css, js, jsLanguage = 'js', onR
                   event.preventDefault();
                 });
                 
-                // 初始代码执行 - 纯运行时执行
+                // 初始代码执行 - 编译并执行
                 runtimeErrors = []; // 重置错误数组
                 
                 try {
-                eval(\`${escapedJs}\`);
+                  // 清理之前的 React 根节点（如果存在）
+                  if (window.reactRoot) {
+                    try {
+                      window.reactRoot.unmount();
+                    } catch (e) {
+                      // 忽略卸载错误
+                    }
+                    window.reactRoot = null;
+                  }
+                  
+                  // 清理之前的 Vue 应用（如果存在）
+                  if (window.vueApp) {
+                    try {
+                      window.vueApp.unmount();
+                    } catch (e) {
+                      // 忽略卸载错误
+                    }
+                    window.vueApp = null;
+                  }
+                  
+                  // 编译代码（如果需要）
+                  let codeToExecute = \`${cleanJs}\`;
+                  
+                  // 如果是 React 代码，需要编译 JSX
+                  if ('${jsLanguage}' === 'react') {
+                    try {
+                      if (window.Babel) {
+                        const result = window.Babel.transform(codeToExecute, {
+                          presets: [
+                            ["env", { targets: "defaults" }],
+                            ["react", { runtime: "classic" }]
+                          ],
+                          plugins: [],
+                        });
+                        codeToExecute = result.code || codeToExecute;
+                      }
+                    } catch (compileError) {
+                      console.warn('Failed to compile React code:', compileError);
+                    }
+                  }
+                  
+                  // 如果是 TypeScript 代码，需要编译
+                  if ('${jsLanguage}' === 'ts') {
+                    try {
+                      if (window.ts) {
+                        const result = window.ts.transpileModule(codeToExecute, {
+                          compilerOptions: {
+                            module: window.ts.ModuleKind.ESNext,
+                            target: window.ts.ScriptTarget.ES2020,
+                            jsx: window.ts.JsxEmit.Preserve,
+                            strict: false,
+                            esModuleInterop: true,
+                            allowSyntheticDefaultImports: true,
+                            skipLibCheck: true
+                          }
+                        });
+                        codeToExecute = result.outputText || codeToExecute;
+                      }
+                    } catch (compileError) {
+                      console.warn('Failed to compile TypeScript code:', compileError);
+                    }
+                  }
+                  
+                  // 执行编译后的代码
+                  eval(codeToExecute);
                   
                 } catch (error) {
                   // 直接处理eval错误，解析正确的行号
