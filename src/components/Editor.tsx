@@ -185,7 +185,7 @@ const Editor: React.FC = () => {
     // Debug functionality
     const [debugEnabled, setDebugEnabled] = useState(false);
     const debugManagerRef = useRef<DebugManager>(new DebugManager());
-    
+
     // 添加一个标志来防止在保存过程中重新加载 Pen
     const [isSavingPen, setIsSavingPen] = useState(false);
 
@@ -377,7 +377,7 @@ const Editor: React.FC = () => {
         }).map(p => p.css),
         compiledCss
     ].join('\n\n');
-    
+
     console.log('🔧 Merged Content Debug - CSS:', {
         importedCssCount: userPens.filter(p => importedCssPenIds.includes(p.id)).length,
         compiledCssLength: compiledCss.length,
@@ -444,7 +444,7 @@ const Editor: React.FC = () => {
         ...compiledImportedJs,
         compiledJs
     ].join('\n\n');
-    
+
     console.log('🔧 Merged Content Debug - JS:', {
         importedJsCount: userPens.filter(p => importedJsPenIds.includes(p.id)).length,
         compiledJsLength: compiledJs.length,
@@ -485,7 +485,7 @@ const Editor: React.FC = () => {
 
         setIsPenLoaded(true); // 标记Pen已初始化
         console.log('🔧 isPenLoaded set to true (initializeNewPen)');
-        
+
         // 同步当前语言到astCompletionService
         setCurrentJsLanguage('js');
     }, []); // 不依赖任何外部状态
@@ -494,7 +494,7 @@ const Editor: React.FC = () => {
     useEffect(() => {
         // 如果正在保存，不要更新默认代码
         if (isSavingPen) return;
-        
+
         if (!currentPen && isPenLoaded) {
             // 只有在新建状态且Pen已加载完成时才更新默认代码
             // 这样可以避免在初始化时自动更新代码
@@ -581,7 +581,7 @@ const Editor: React.FC = () => {
             currentPenId: currentPen?.id
         });
         if (isSavingPen) return;
-        
+
         const penId = params.id;
         if (penId && userPens.length > 0) {
             // 确保userPens已经加载完成再加载具体的pen
@@ -602,7 +602,7 @@ const Editor: React.FC = () => {
     useEffect(() => {
         // 如果正在保存，不要重新初始化编辑器
         if (isSavingPen) return;
-        
+
         // 只有在Pen加载完成或需要重新初始化时才创建编辑器
         if (!isPenLoaded && !shouldReinitializeEditors) return;
 
@@ -655,7 +655,7 @@ const Editor: React.FC = () => {
         let cssAutocompleteExt: Extension;
         cssExtension = css();
         cssAutocompleteExt = cssAutocomplete;
-        
+
 
         // 创建CSS编辑器，同时使用自动完成和lint扩展
         createEditor(
@@ -675,30 +675,30 @@ const Editor: React.FC = () => {
             case 'react':
                 jsExtension = javascript({ jsx: true, typescript: true });
                 jsAutocompleteExt = autocompletion({
-                    override: [enhancedCombinedCompletionSource, reactSnippetCompletionSource,jsSnippetCompletionSource]
+                    override: [enhancedCombinedCompletionSource, reactSnippetCompletionSource, jsSnippetCompletionSource]
                 });
                 break;
             case 'vue':
                 jsExtension = vue();
                 jsAutocompleteExt = autocompletion({
-                    override: [enhancedCombinedCompletionSource, vueSnippetCompletionSource,jsSnippetCompletionSource]
+                    override: [enhancedCombinedCompletionSource, vueSnippetCompletionSource, jsSnippetCompletionSource]
                 });
                 break;
             case 'ts':
                 jsExtension = javascript({ typescript: true });
                 jsAutocompleteExt = autocompletion({
-                    override: [enhancedCombinedCompletionSource, tsSnippetCompletionSource,jsSnippetCompletionSource]
+                    override: [enhancedCombinedCompletionSource, tsSnippetCompletionSource, jsSnippetCompletionSource]
                 });
                 break;
             case 'js':
             default:
                 jsExtension = javascript();
                 jsAutocompleteExt = autocompletion({
-                    override: [enhancedCombinedCompletionSource,jsSnippetCompletionSource]
+                    override: [enhancedCombinedCompletionSource, jsSnippetCompletionSource]
                 });
                 break;
         }
-        
+
 
         // 创建JavaScript编辑器，同时使用运行时错误扩展和静态lint扩展
         createEditor(
@@ -855,7 +855,7 @@ const Editor: React.FC = () => {
             const defaultHtml = '<div id="app">Hello World</div>';
             const defaultCss = 'body { color: blue; }';
             const defaultJs = 'console.log("Hello World");';
-            
+
             const hasChanges =
                 htmlCode !== defaultHtml ||
                 cssCode !== defaultCss ||
@@ -1014,32 +1014,20 @@ const Editor: React.FC = () => {
         if (!penId) {
             // 选择了"New Pen"选项
             handleNew();
+            // 更新URL为编辑器根路径
+            navigate('/editor', { replace: true });
             return;
         }
 
         const selectedPen = userPens.find(pen => pen.id === penId);
 
         if (selectedPen) {
-            setCurrentPen(selectedPen);
-            setTitle(selectedPen.title);
-
-            // 更新React state，useEffect会自动同步到编辑器
-            setHtmlCode(selectedPen.html);
-            setCssCode(selectedPen.css);
-            setJsCode(selectedPen.js);
-
-            // 恢复保存的语言设置
-            if (selectedPen.cssLanguage) setCssLanguage(selectedPen.cssLanguage);
-            if (selectedPen.jsLanguage) {
-                setJsLanguage(selectedPen.jsLanguage);
-                // 立即同步到astCompletionService
-                setCurrentJsLanguage(selectedPen.jsLanguage);
-            }
-
-            setIsPenLoaded(true); // 标记Pen已加载
-            setHasUnsavedChanges(false);
+            // 先更新URL，这会触发useEffect加载pen
+            navigate(`/editor/${selectedPen.id}`, { replace: true });
         } else {
             handleNew();
+            // 更新URL为编辑器根路径
+            navigate('/editor', { replace: true });
         }
     };
 
@@ -1079,7 +1067,7 @@ const Editor: React.FC = () => {
             const currentHtml = htmlEditor?.state.doc.toString() || htmlCode;
             const currentCss = cssEditor?.state.doc.toString() || cssCode;
             const currentJs = jsEditor?.state.doc.toString() || jsCode;
-            
+
             console.log('🔧 Language Change Debug - Current content:', {
                 html: currentHtml,
                 css: currentCss,
@@ -1097,7 +1085,7 @@ const Editor: React.FC = () => {
                 currentJs === 'function App() {\n  return <h1>Hello React!</h1>;\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("app"));\nwindow.reactRoot = root;\nroot.render(<App />);' ||
                 currentJs === 'const { createApp } = Vue;\n\nconst component = {\n  setup() {\n    return {\n      message: "Hello Vue!"\n    };\n  },\n  template: `<h1>{{ message }}</h1>`\n};\n\nconst app = createApp(component);\nwindow.vueApp = app;\napp.mount("#app");' ||
                 currentJs === 'console.log("Hello TypeScript!");';
-                
+
             console.log('🔧 Language Change Debug - Is default code:', {
                 isDefaultHtml,
                 isDefaultCss,
@@ -1116,7 +1104,7 @@ const Editor: React.FC = () => {
                 console.log('🔧 Language Change Debug - Setting default JS code:', defaultJs);
                 setJsCode(defaultJs);
                 setCompiledJs(defaultJs);
-                
+
                 if (isDefaultJs || isDefaultHtml || isDefaultCss) {
                     // 获取新语言对应的默认代码
                     const getNewDefaultHtml = () => {
@@ -1161,7 +1149,7 @@ const Editor: React.FC = () => {
                         newDefaultCss,
                         newDefaultJs
                     });
-                    
+
                     // 只更新是默认内容的部分
                     if (isDefaultHtml) setHtmlCode(newDefaultHtml);
                     if (isDefaultCss) {
