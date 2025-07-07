@@ -1,7 +1,7 @@
 // AST分析服务 - 提供基于AST的智能代码补全
 import * as parser from '@babel/parser';//解析js代码为AST
 import { parse as parseVue } from '@vue/compiler-sfc';//解析Vue单文件组件
-import { parse } from 'node:path';
+
 
 // 类型定义
 export interface Position {

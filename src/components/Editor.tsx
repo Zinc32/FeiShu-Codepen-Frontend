@@ -54,7 +54,7 @@ import {
     completionKeymap,
     closeBracketsKeymap
 } from '../services/autocompleteService';
-import { smartCompletionSource, enhancedCombinedCompletionSource, setCurrentJsLanguage } from '../services/astCompletionService';
+import {astCompletionSource, enhancedCombinedCompletionSource, setCurrentJsLanguage } from '../services/astCompletionService';
 import { autocompletion } from '@codemirror/autocomplete';
 import { runtimeErrorExtension, addRuntimeErrorsToEditor, clearRuntimeErrorsFromEditor, jsLint, htmlLint, cssLint, errorDecorationField } from '../services/lintService';
 
